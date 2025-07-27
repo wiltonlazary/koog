@@ -23,6 +23,7 @@ kotlin {
                 implementation(project(":agents:agents-ext"))
                 implementation(project(":agents:agents-features:agents-features-event-handler"))
                 implementation(project(":agents:agents-features:agents-features-trace"))
+                implementation(project(":agents:agents-features:agents-features-snapshot"))
                 implementation(project(":prompt:prompt-executor:prompt-executor-clients:prompt-executor-anthropic-client"))
                 implementation(project(":prompt:prompt-executor:prompt-executor-clients:prompt-executor-openai-client"))
                 implementation(project(":prompt:prompt-executor:prompt-executor-clients:prompt-executor-openrouter-client"))
@@ -44,6 +45,11 @@ val envs = credentialsResolver.resolve(
 tasks.withType<Test> {
     doFirst {
         environment(envs.get())
+    }
+    
+    // Forward system properties to the test JVM
+    System.getProperties().forEach { key, value ->
+        systemProperty(key.toString(), value)
     }
 }
 

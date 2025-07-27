@@ -6,6 +6,7 @@ import ai.koog.agents.core.dsl.builder.strategy
 import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.agents.core.tools.annotations.LLMDescription
 import ai.koog.agents.example.ApiKeyService
+import ai.koog.agents.features.opentelemetry.feature.OpenTelemetry
 import ai.koog.prompt.dsl.prompt
 import ai.koog.prompt.executor.clients.anthropic.AnthropicLLMClient
 import ai.koog.prompt.executor.clients.anthropic.AnthropicModels
@@ -14,6 +15,7 @@ import ai.koog.prompt.executor.clients.openai.OpenAIModels
 import ai.koog.prompt.executor.llms.MultiLLMPromptExecutor
 import ai.koog.prompt.llm.LLMProvider
 import ai.koog.prompt.structure.json.JsonStructuredData
+import io.opentelemetry.exporter.logging.LoggingSpanExporter
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
 
@@ -21,10 +23,8 @@ import kotlinx.serialization.Serializable
 @Serializable
 @LLMDescription("The result of the best joke selection")
 data class JokeWinner(
-    @LLMDescription("Index of the winning joke from 0 to 2")
-    val index: Int,
-    @LLMDescription("The winning joke text")
-    val jokeText: String
+    @LLMDescription("Index of the winning joke from 0 to 2") val index: Int,
+    @LLMDescription("The winning joke text") val jokeText: String
 )
 
 
@@ -72,15 +72,9 @@ fun main(args: Array<String>) = runBlocking {
         }
 
         // Define a node to select the best joke
-        val nodeGenerateJokes by parallel(
+        val nodeGenerateBestJoke by parallel(
             nodeOpenAI, nodeAnthropicSonnet, nodeAnthropicOpus,
-        )
-
-        val nodeTransformJoke by transform<String, String, String> { joke ->
-            "My favorite joke: $joke"
-        }
-
-        val nodeSelectBestJoke by merge<String, String> {
+        ) {
             selectByIndex { jokes ->
                 // Another LLM (ex: GPT4o) would find the funniest joke:
                 llm.writeSession {
@@ -108,31 +102,35 @@ fun main(args: Array<String>) = runBlocking {
         }
 
         // unused
-        val concatenateJokes by merge<String, String> {
+        val nodeGenerateJokes by parallel(
+            nodeOpenAI, nodeAnthropicSonnet, nodeAnthropicOpus,
+        ) {
             fold("Jokes:\n") { result, joke -> "$result\n$joke" }
         }
 
         // unused
-        val longestJoke by merge<String, String> {
+        val nodeGenerateLongestJoke by parallel(
+            nodeOpenAI, nodeAnthropicSonnet, nodeAnthropicOpus,
+        ) {
             selectByMax { it.length }
         }
 
         // unused
-        val jokeContainingJetBrains by merge<String, String> {
+        val nodeGenerateJetbrainsJoke by parallel(
+            nodeOpenAI, nodeAnthropicSonnet, nodeAnthropicOpus,
+        ) {
             selectBy { it.contains("jetbrains") }
         }
 
-        // Feel free to use `concatenateJokes` or `longestJoke` or `jokeContainingJetBrains` here:
-        nodeStart then nodeGenerateJokes then nodeTransformJoke then nodeSelectBestJoke then nodeFinish
+        // Feel free to use `nodeGenerateJokes` or `nodeGenerateLongestJoke` or `nodeGenerateJetbrainsJoke` here:
+        nodeStart then nodeGenerateBestJoke then nodeFinish
     }
 
     // Create agent config
     val agentConfig = AIAgentConfig(
         prompt = prompt("best-joke-agent") {
             system("You are a joke generator that creates the best jokes about given topics.")
-        },
-        model = OpenAIModels.Chat.GPT4o,
-        maxAgentIterations = 10
+        }, model = OpenAIModels.Chat.GPT4o, maxAgentIterations = 10
     )
 
     // Create the agent
@@ -140,12 +138,12 @@ fun main(args: Array<String>) = runBlocking {
         promptExecutor = MultiLLMPromptExecutor(
             LLMProvider.OpenAI to OpenAILLMClient(ApiKeyService.openAIApiKey),
             LLMProvider.Anthropic to AnthropicLLMClient(ApiKeyService.anthropicApiKey),
-        ),
-        strategy = strategy,
-        agentConfig = agentConfig,
-        toolRegistry = ToolRegistry.EMPTY
+        ), strategy = strategy, agentConfig = agentConfig, toolRegistry = ToolRegistry.EMPTY
     ) {
-
+        install(OpenTelemetry) {
+            // Add a console logger for local debugging
+            addSpanExporter(LoggingSpanExporter.create())
+        }
     }
 
     val topic = "programming"

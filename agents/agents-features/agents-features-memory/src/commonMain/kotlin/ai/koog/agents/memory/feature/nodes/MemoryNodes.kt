@@ -1,11 +1,14 @@
 package ai.koog.agents.memory.feature.nodes
 
+import ai.koog.agents.core.annotation.InternalAgentsApi
+import ai.koog.agents.core.dsl.builder.AIAgentBuilderDslMarker
 import ai.koog.agents.core.dsl.builder.AIAgentNodeDelegate
 import ai.koog.agents.core.dsl.builder.AIAgentSubgraphBuilderBase
 import ai.koog.agents.memory.config.MemoryScopeType
 import ai.koog.agents.memory.feature.withMemory
 import ai.koog.agents.memory.model.*
 import ai.koog.agents.memory.prompts.MemoryPrompts
+import ai.koog.prompt.llm.LLModel
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -20,7 +23,8 @@ import kotlinx.serialization.json.Json
  * @param scope The scope of the memory (Agent, Feature, etc.)
  * @param concept A concept to load facts for
  */
-public fun <T> AIAgentSubgraphBuilderBase<*, *>.nodeLoadFromMemory(
+@AIAgentBuilderDslMarker
+public inline fun <reified T> AIAgentSubgraphBuilderBase<*, *>.nodeLoadFromMemory(
     name: String? = null,
     concept: Concept,
     subject: MemorySubject,
@@ -34,7 +38,8 @@ public fun <T> AIAgentSubgraphBuilderBase<*, *>.nodeLoadFromMemory(
  * @param scope The scope of the memory (Agent, Feature, etc.)
  * @param concepts A list of concepts to load facts for
  */
-public fun <T> AIAgentSubgraphBuilderBase<*, *>.nodeLoadFromMemory(
+@AIAgentBuilderDslMarker
+public inline fun <reified T> AIAgentSubgraphBuilderBase<*, *>.nodeLoadFromMemory(
     name: String? = null,
     concepts: List<Concept>,
     subject: MemorySubject,
@@ -49,7 +54,9 @@ public fun <T> AIAgentSubgraphBuilderBase<*, *>.nodeLoadFromMemory(
  * @param scopes List of memory scopes (Agent, Feature, etc.). By default all scopes would be chosen
  * @param subjects List of subjects (user, project, organization, etc.) to look for. By default all subjects would be chosen
  */
-public fun <T> AIAgentSubgraphBuilderBase<*, *>.nodeLoadFromMemory(
+@OptIn(InternalAgentsApi::class)
+@AIAgentBuilderDslMarker
+public inline fun <reified T> AIAgentSubgraphBuilderBase<*, *>.nodeLoadFromMemory(
     name: String? = null,
     concepts: List<Concept>,
     subjects: List<MemorySubject> = MemorySubject.registeredSubjects,
@@ -70,7 +77,9 @@ public fun <T> AIAgentSubgraphBuilderBase<*, *>.nodeLoadFromMemory(
  * @param scopes List of memory scopes (Agent, Feature, etc.). By default only Agent scope would be chosen
  * @param subjects List of subjects (user, project, organization, etc.) to look for.
  */
-public fun <T> AIAgentSubgraphBuilderBase<*, *>.nodeLoadAllFactsFromMemory(
+@OptIn(InternalAgentsApi::class)
+@AIAgentBuilderDslMarker
+public inline fun <reified T> AIAgentSubgraphBuilderBase<*, *>.nodeLoadAllFactsFromMemory(
     name: String? = null,
     subjects: List<MemorySubject> = MemorySubject.registeredSubjects,
     scopes: List<MemoryScopeType> = MemoryScopeType.entries
@@ -88,12 +97,16 @@ public fun <T> AIAgentSubgraphBuilderBase<*, *>.nodeLoadAllFactsFromMemory(
  * @param subject The subject scope of the memory (USER, PROJECT, etc.)
  * @param scope The scope of the memory (Agent, Feature, etc.)
  * @param concepts List of concepts to save in memory
+ * @param retrievalModel LLM that will be used for fact retrieval from the history (by default, the same model as the current one will be used)
  */
-public fun <T> AIAgentSubgraphBuilderBase<*, *>.nodeSaveToMemory(
+@OptIn(InternalAgentsApi::class)
+@AIAgentBuilderDslMarker
+public inline fun <reified T> AIAgentSubgraphBuilderBase<*, *>.nodeSaveToMemory(
     name: String? = null,
     subject: MemorySubject,
     scope: MemoryScopeType,
     concepts: List<Concept>,
+    retrievalModel: LLModel? = null
 ): AIAgentNodeDelegate<T, T> = node(name) { input ->
     withMemory {
         concepts.forEach { concept ->
@@ -101,7 +114,7 @@ public fun <T> AIAgentSubgraphBuilderBase<*, *>.nodeSaveToMemory(
                 concept = concept,
                 subject = subject,
                 scope = scopesProfile.getScope(scope) ?: return@forEach,
-                preserveQuestionsInLLMChat = true
+                retrievalModel = retrievalModel
             )
         }
     }
@@ -115,13 +128,16 @@ public fun <T> AIAgentSubgraphBuilderBase<*, *>.nodeSaveToMemory(
  * @param subject The subject scope of the memory (USER, PROJECT, etc.)
  * @param scope The scope of the memory (Agent, Feature, etc.)
  * @param concept The concept to save in memory
+ * @param retrievalModel LLM that will be used for fact retrieval from the history (by default, the same model as the current one will be used)
  */
-public fun <T> AIAgentSubgraphBuilderBase<*, *>.nodeSaveToMemory(
+@AIAgentBuilderDslMarker
+public inline fun <reified T> AIAgentSubgraphBuilderBase<*, *>.nodeSaveToMemory(
     name: String? = null,
     concept: Concept,
     subject: MemorySubject,
     scope: MemoryScopeType,
-): AIAgentNodeDelegate<T, T> = nodeSaveToMemory(name, subject, scope, listOf(concept))
+    retrievalModel: LLModel? = null
+): AIAgentNodeDelegate<T, T> = nodeSaveToMemory(name, subject, scope, listOf(concept), retrievalModel)
 
 /**
  * Node that automatically detects and extracts facts from the chat history and saves them to memory.
@@ -131,13 +147,22 @@ public fun <T> AIAgentSubgraphBuilderBase<*, *>.nodeSaveToMemory(
  * @param scopes List of memory scopes (Agent, Feature, etc.). By default only Agent scope would be chosen
  * @param subjects List of subjects (user, project, organization, etc.) to look for.
  * By default, all subjects will be included and looked for.
+ * @param retrievalModel LLM that will be used for fact retrieval from the history (by default, the same model as the current one will be used)
  */
-public fun <T> AIAgentSubgraphBuilderBase<*, *>.nodeSaveToMemoryAutoDetectFacts(
+@OptIn(InternalAgentsApi::class)
+@AIAgentBuilderDslMarker
+public inline fun <reified T> AIAgentSubgraphBuilderBase<*, *>.nodeSaveToMemoryAutoDetectFacts(
     name: String? = null,
     scopes: List<MemoryScopeType> = listOf(MemoryScopeType.AGENT),
-    subjects: List<MemorySubject> = MemorySubject.registeredSubjects
+    subjects: List<MemorySubject> = MemorySubject.registeredSubjects,
+    retrievalModel: LLModel? = null
 ): AIAgentNodeDelegate<T, T> = node(name) { input ->
     llm.writeSession {
+        val initialModel = model
+        val initialPrompt = prompt.copy()
+        if (retrievalModel != null) {
+            model = retrievalModel
+        }
         updatePrompt {
             val prompt = MemoryPrompts.autoDetectFacts(subjects)
             user(prompt)
@@ -152,6 +177,11 @@ public fun <T> AIAgentSubgraphBuilderBase<*, *>.nodeSaveToMemoryAutoDetectFacts(
                     agentMemory.save(fact, subject, scope)
                 }
             }
+        }
+
+        rewritePrompt { initialPrompt } // Revert the prompt to the original one
+        if (retrievalModel != null) {
+            model = initialModel
         }
     }
 
@@ -168,7 +198,11 @@ internal data class SubjectWithFact(
 
 private fun getCurrentTimestamp(): Long = DefaultTimeProvider.getCurrentTimestamp()
 
-private fun parseFactsFromResponse(content: String): List<Pair<MemorySubject, Fact>> {
+/**
+ * Parsing facts from response.
+ */
+@InternalAgentsApi
+public fun parseFactsFromResponse(content: String): List<Pair<MemorySubject, Fact>> {
     val parsedFacts = Json.decodeFromString<List<SubjectWithFact>>(content)
     val groupedFacts = parsedFacts.groupBy { it.subject to it.keyword }
 

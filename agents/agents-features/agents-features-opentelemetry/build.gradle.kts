@@ -25,10 +25,10 @@ kotlin {
 
         jvmMain {
             dependencies {
+                api(project.dependencies.platform(libs.opentelemetry.bom))
                 api(libs.opentelemetry.sdk)
                 implementation(libs.opentelemetry.exporter.otlp)
                 implementation(libs.opentelemetry.exporter.logging)
-                implementation(project.dependencies.platform(libs.opentelemetry.bom))
             }
 
             resources.srcDir(layout.buildDirectory.dir("generated/resources"))
@@ -49,14 +49,6 @@ kotlin {
         }
     }
 
-    // Configure JVM application executable
-    jvm {
-        @OptIn(org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi::class)
-        mainRun {
-            mainClass.set("ai.koog.agents.features.opentelemetry.server.OpenTelemetryServerAppKt")
-        }
-    }
-
     explicitApi()
 }
 
@@ -72,7 +64,7 @@ val generateProductProperties = tasks.register("generateProductProperties") {
         propertiesFile.asFile.parentFile.mkdirs()
         propertiesFile.asFile.writeText("""
             version=$rootProjectVersion
-            serviceName=$rootProjectGroup
+            name=$rootProjectGroup
         """.trimIndent())
     }
 }

@@ -1,12 +1,9 @@
 package ai.koog.prompt.cache.memory
 
-import ai.koog.agents.core.tools.ToolDescriptor
 import ai.koog.prompt.cache.model.PromptCache
-import ai.koog.prompt.dsl.Prompt
 import ai.koog.prompt.message.Message
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
-import kotlin.math.absoluteValue
 
 /**
  * In-memory implementation of [PromptCache].
@@ -28,7 +25,9 @@ public class InMemoryPromptCache(private val maxEntries: Int?) : PromptCache {
             val limit = when {
                 parts.size == 1 || parts[1].isEmpty() -> null
                 parts[1].equals("unlimited", ignoreCase = true) -> null
-                else -> parts[1].toIntOrNull() ?: error("Invalid memory cache size limit: ${parts[1]}. Expected a number or 'unlimited'.")
+                parts[1].startsWith("-") -> error("Invalid memory cache size limit: ${parts[1]}. Expected a positive number or 'unlimited'.")
+                else -> parts[1].toIntOrNull()
+                    ?: error("Invalid memory cache size limit: ${parts[1]}. Expected a positive number or 'unlimited'.")
             }
             return InMemoryPromptCache(limit)
         }
@@ -41,17 +40,8 @@ public class InMemoryPromptCache(private val maxEntries: Int?) : PromptCache {
         var accessed: Instant = Clock.System.now()
     )
 
-    /**
-     * Generate a cache key for a prompt with tools.
-     */
-    private fun cacheKey(prompt: Prompt, tools: List<ToolDescriptor>): String {
-        val toolsString = tools.joinToString { it.name }
-        return (prompt.toString() + toolsString).hashCode().absoluteValue.toString(36)
-    }
-
-    override suspend fun get(prompt: Prompt, tools: List<ToolDescriptor>): List<Message.Response>? {
-        val key = cacheKey(prompt, tools)
-        val entry = cache[key] ?: return null
+    override suspend fun get(request: PromptCache.Request): List<Message.Response>? {
+        val entry = cache[request.asCacheKey] ?: return null
 
         // Update last accessed time
         entry.accessed = Clock.System.now()
@@ -59,8 +49,8 @@ public class InMemoryPromptCache(private val maxEntries: Int?) : PromptCache {
         return entry.response
     }
 
-    override suspend fun put(prompt: Prompt, tools: List<ToolDescriptor>, response: List<Message.Response>) {
-        val key = cacheKey(prompt, tools)
+    override suspend fun put(request: PromptCache.Request, response: List<Message.Response>) {
+        val key = request.asCacheKey
 
         // Enforce size limit if specified
         if (maxEntries != null && cache.size >= maxEntries && !cache.containsKey(key)) {

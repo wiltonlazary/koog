@@ -1,5 +1,7 @@
 package ai.koog.agents.core.dsl.extension
 
+import ai.koog.agents.core.agent.context.DetachedPromptExecutorAPI
+import ai.koog.agents.core.dsl.builder.AIAgentBuilderDslMarker
 import ai.koog.agents.core.dsl.builder.AIAgentNodeDelegate
 import ai.koog.agents.core.dsl.builder.AIAgentSubgraphBuilderBase
 import ai.koog.agents.core.environment.ReceivedToolResult
@@ -10,7 +12,9 @@ import ai.koog.agents.core.tools.Tool
 import ai.koog.agents.core.tools.ToolArgs
 import ai.koog.agents.core.tools.ToolDescriptor
 import ai.koog.agents.core.tools.ToolResult
+import ai.koog.prompt.dsl.ModerationResult
 import ai.koog.prompt.dsl.PromptBuilder
+import ai.koog.prompt.dsl.prompt
 import ai.koog.prompt.llm.LLModel
 import ai.koog.prompt.message.Message
 import ai.koog.prompt.structure.StructuredData
@@ -23,7 +27,8 @@ import kotlinx.coroutines.flow.Flow
  *
  * @param name Optional node name, defaults to delegate's property name.
  */
-public fun <T> AIAgentSubgraphBuilderBase<*, *>.nodeDoNothing(name: String? = null): AIAgentNodeDelegate<T, T> =
+@AIAgentBuilderDslMarker
+public inline fun <reified T> AIAgentSubgraphBuilderBase<*, *>.nodeDoNothing(name: String? = null): AIAgentNodeDelegate<T, T> =
     node(name) { input -> input }
 
 // ================
@@ -37,9 +42,10 @@ public fun <T> AIAgentSubgraphBuilderBase<*, *>.nodeDoNothing(name: String? = nu
  * @param name Optional node name, defaults to delegate's property name.
  * @param body Lambda to modify the prompt using PromptBuilder.
  */
-public fun <T> AIAgentSubgraphBuilderBase<*, *>.nodeUpdatePrompt(
+@AIAgentBuilderDslMarker
+public inline fun <reified T> AIAgentSubgraphBuilderBase<*, *>.nodeUpdatePrompt(
     name: String? = null,
-    body: PromptBuilder.() -> Unit
+    noinline body: PromptBuilder.() -> Unit
 ): AIAgentNodeDelegate<T, T> =
     node(name) { input ->
         llm.writeSession {
@@ -56,6 +62,7 @@ public fun <T> AIAgentSubgraphBuilderBase<*, *>.nodeUpdatePrompt(
  *
  * @param name Optional name for the node.
  */
+@AIAgentBuilderDslMarker
 public fun AIAgentSubgraphBuilderBase<*, *>.nodeLLMSendMessageOnlyCallingTools(name: String? = null): AIAgentNodeDelegate<String, Message.Response> =
     node(name) { message ->
         llm.writeSession {
@@ -73,6 +80,7 @@ public fun AIAgentSubgraphBuilderBase<*, *>.nodeLLMSendMessageOnlyCallingTools(n
  * @param name Optional node name.
  * @param tool Tool descriptor the LLM is required to use.
  */
+@AIAgentBuilderDslMarker
 public fun AIAgentSubgraphBuilderBase<*, *>.nodeLLMSendMessageForceOneTool(
     name: String? = null,
     tool: ToolDescriptor
@@ -93,6 +101,7 @@ public fun AIAgentSubgraphBuilderBase<*, *>.nodeLLMSendMessageForceOneTool(
  * @param name Optional node name.
  * @param tool Tool the LLM is required to use.
  */
+@AIAgentBuilderDslMarker
 public fun AIAgentSubgraphBuilderBase<*, *>.nodeLLMSendMessageForceOneTool(
     name: String? = null,
     tool: Tool<*, *>
@@ -105,6 +114,7 @@ public fun AIAgentSubgraphBuilderBase<*, *>.nodeLLMSendMessageForceOneTool(
  * @param name Optional node name.
  * @param allowToolCalls Controls whether LLM can use tools (default: true).
  */
+@AIAgentBuilderDslMarker
 public fun AIAgentSubgraphBuilderBase<*, *>.nodeLLMRequest(
     name: String? = null,
     allowToolCalls: Boolean = true
@@ -121,6 +131,42 @@ public fun AIAgentSubgraphBuilderBase<*, *>.nodeLLMRequest(
     }
 
 /**
+ * Represents a message that has undergone moderation and the result of the moderation.
+ *
+ * @property message The original message being moderated.
+ * @property moderationResult The result of the moderation.
+ * */
+public data class ModeratedMessage(val message: Message, val moderationResult: ModerationResult)
+
+/**
+ * A node that moderates only a single input message using a specified language model.
+ *
+ * @param name Optional node name, defaults to delegate's property name.
+ * @param moderatingModel The optional language model to be used for moderation.
+ * If null, a default or previously defined model will be applied.
+ * @param includeCurrentPrompt Should current prompt be included in the moderation requests or only the input message.
+ */
+@OptIn(DetachedPromptExecutorAPI::class)
+@AIAgentBuilderDslMarker
+public fun AIAgentSubgraphBuilderBase<*, *>.nodeLLMModerateMessage(
+    name: String? = null,
+    moderatingModel: LLModel? = null,
+    includeCurrentPrompt: Boolean = false,
+): AIAgentNodeDelegate<Message, ModeratedMessage> =
+    node<Message, ModeratedMessage>(name) { message ->
+        val moderationPrompt = if (includeCurrentPrompt) {
+            prompt(llm.prompt) { message(message) }
+        }
+        else {
+            prompt("single-message-moderation") { message(message) }
+        }
+
+        val moderationResult = llm.promptExecutor.moderate(moderationPrompt, moderatingModel ?: llm.model)
+
+        ModeratedMessage(message, moderationResult)
+    }
+
+/**
  * A node that appends a user message to the LLM prompt and requests structured data from the LLM with error correction capabilities.
  *
  * @param name Optional node name.
@@ -128,7 +174,8 @@ public fun AIAgentSubgraphBuilderBase<*, *>.nodeLLMRequest(
  * @param retries Number of retry attempts for failed generations.
  * @param fixingModel LLM used for error correction.
  */
-public fun <T> AIAgentSubgraphBuilderBase<*, *>.nodeLLMRequestStructured(
+@AIAgentBuilderDslMarker
+public inline fun <reified T> AIAgentSubgraphBuilderBase<*, *>.nodeLLMRequestStructured(
     name: String? = null,
     structure: StructuredData<T>,
     retries: Int,
@@ -155,6 +202,7 @@ public fun <T> AIAgentSubgraphBuilderBase<*, *>.nodeLLMRequestStructured(
  * @param structureDefinition Optional structure to guide the LLM response.
  * @param transformStreamData Function to process the streamed data.
  */
+@AIAgentBuilderDslMarker
 public fun <T> AIAgentSubgraphBuilderBase<*, *>.nodeLLMRequestStreaming(
     name: String? = null,
     structureDefinition: StructuredDataDefinition? = null,
@@ -178,6 +226,7 @@ public fun <T> AIAgentSubgraphBuilderBase<*, *>.nodeLLMRequestStreaming(
  * @param name Optional node name.
  * @param structureDefinition Optional structure to guide the LLM response.
  */
+@AIAgentBuilderDslMarker
 public fun AIAgentSubgraphBuilderBase<*, *>.nodeLLMRequestStreaming(
     name: String? = null,
     structureDefinition: StructuredDataDefinition? = null,
@@ -188,6 +237,7 @@ public fun AIAgentSubgraphBuilderBase<*, *>.nodeLLMRequestStreaming(
  *
  * @param name Optional node name.
  */
+@AIAgentBuilderDslMarker
 public fun AIAgentSubgraphBuilderBase<*, *>.nodeLLMRequestMultiple(name: String? = null): AIAgentNodeDelegate<String, List<Message.Response>> =
     node(name) { message ->
         llm.writeSession {
@@ -204,15 +254,26 @@ public fun AIAgentSubgraphBuilderBase<*, *>.nodeLLMRequestMultiple(name: String?
  *
  * @param name Optional node name.
  * @param strategy Determines which messages to include in compression.
+ * @param retrievalModel An optional [LLModel] that will be used for retrieval of the facts from memory.
+ *                       By default, the same model will be used as the current one in the agent's strategy.
  * @param preserveMemory Specifies whether to retain message memory after compression.
  */
-public fun <T> AIAgentSubgraphBuilderBase<*, *>.nodeLLMCompressHistory(
+@AIAgentBuilderDslMarker
+public inline fun <reified T> AIAgentSubgraphBuilderBase<*, *>.nodeLLMCompressHistory(
     name: String? = null,
     strategy: HistoryCompressionStrategy = HistoryCompressionStrategy.WholeHistory,
+    retrievalModel: LLModel? = null,
     preserveMemory: Boolean = true
 ): AIAgentNodeDelegate<T, T> = node(name) { input ->
     llm.writeSession {
+        val initialModel = model
+        if (retrievalModel != null) {
+            model = retrievalModel
+        }
+
         replaceHistoryWithTLDR(strategy, preserveMemory)
+
+        model = initialModel
     }
 
     input
@@ -227,6 +288,7 @@ public fun <T> AIAgentSubgraphBuilderBase<*, *>.nodeLLMCompressHistory(
  *
  * @param name Optional node name.
  */
+@AIAgentBuilderDslMarker
 public fun AIAgentSubgraphBuilderBase<*, *>.nodeExecuteTool(
     name: String? = null
 ): AIAgentNodeDelegate<Message.Tool.Call, ReceivedToolResult> =
@@ -239,6 +301,7 @@ public fun AIAgentSubgraphBuilderBase<*, *>.nodeExecuteTool(
  *
  * @param name Optional node name.
  */
+@AIAgentBuilderDslMarker
 public fun AIAgentSubgraphBuilderBase<*, *>.nodeLLMSendToolResult(
     name: String? = null
 ): AIAgentNodeDelegate<ReceivedToolResult, Message.Response> =
@@ -260,6 +323,7 @@ public fun AIAgentSubgraphBuilderBase<*, *>.nodeLLMSendToolResult(
  * @param name Optional node name.
  * @param parallelTools Specifies whether tools should be executed in parallel, defaults to false.
  */
+@AIAgentBuilderDslMarker
 public fun AIAgentSubgraphBuilderBase<*, *>.nodeExecuteMultipleTools(
     name: String? = null,
     parallelTools: Boolean = false,
@@ -273,10 +337,45 @@ public fun AIAgentSubgraphBuilderBase<*, *>.nodeExecuteMultipleTools(
     }
 
 /**
+ * Creates a node in the AI agent subgraph that processes a collection of tool calls,
+ * executes them, and sends back the results to the downstream process. The tools can
+ * be executed either in parallel or sequentially based on the provided configuration.
+ *
+ * @param name An optional name for the node to be created. If not provided, a default name is used.
+ * @param parallelTools A flag to determine if the tool calls should be executed concurrently.
+ *                       If true, all tool calls are executed in parallel; otherwise, they are
+ *                       executed sequentially. Default value is false.
+ * @return An instance of [AIAgentNodeDelegate] that takes a list of tool calls as input
+ *         and returns the corresponding list of tool responses.
+ */
+public fun AIAgentSubgraphBuilderBase<*, *>.nodeExecuteMultipleToolsAndSendResults(
+    name: String? = null,
+    parallelTools: Boolean = false,
+): AIAgentNodeDelegate<List<Message.Tool.Call>, List<Message.Response>> =
+    node(name) { toolCalls ->
+        val results = if (parallelTools) {
+            environment.executeTools(toolCalls)
+        } else {
+            toolCalls.map { environment.executeTool(it) }
+        }
+
+        llm.writeSession {
+            updatePrompt {
+                tool {
+                    results.forEach { result(it) }
+                }
+            }
+
+            requestLLMMultiple()
+        }
+    }
+
+/**
  * A node that adds multiple tool results to the prompt and gets multiple LLM responses.
  *
  * @param name Optional node name.
  */
+@AIAgentBuilderDslMarker
 public fun AIAgentSubgraphBuilderBase<*, *>.nodeLLMSendMultipleToolResults(
     name: String? = null
 ): AIAgentNodeDelegate<List<ReceivedToolResult>, List<Message.Response>> =
@@ -299,6 +398,7 @@ public fun AIAgentSubgraphBuilderBase<*, *>.nodeLLMSendMultipleToolResults(
  * @param tool The tool to execute.
  * @param doUpdatePrompt Specifies whether to add tool call details to the prompt.
  */
+@AIAgentBuilderDslMarker
 public inline fun <reified ToolArg : ToolArgs, reified TResult : ToolResult> AIAgentSubgraphBuilderBase<*, *>.nodeExecuteSingleTool(
     name: String? = null,
     tool: Tool<ToolArg, TResult>,

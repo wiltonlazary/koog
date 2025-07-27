@@ -5,9 +5,11 @@ import ai.koog.agents.core.agent.context.AIAgentLLMContext
 import ai.koog.agents.core.agent.entity.AIAgentStorageKey
 import ai.koog.agents.core.agent.entity.createStorageKey
 import ai.koog.agents.core.agent.session.AIAgentLLMWriteSession
+import ai.koog.agents.core.annotation.InternalAgentsApi
 import ai.koog.agents.core.dsl.extension.dropTrailingToolCalls
 import ai.koog.agents.core.feature.AIAgentFeature
 import ai.koog.agents.core.feature.AIAgentPipeline
+import ai.koog.agents.core.tools.annotations.LLMDescription
 import ai.koog.agents.features.common.config.FeatureConfig
 import ai.koog.agents.memory.config.MemoryScopeType
 import ai.koog.agents.memory.config.MemoryScopesProfile
@@ -16,7 +18,12 @@ import ai.koog.agents.memory.model.DefaultTimeProvider.getCurrentTimestamp
 import ai.koog.agents.memory.prompts.MemoryPrompts
 import ai.koog.agents.memory.providers.AgentMemoryProvider
 import ai.koog.agents.memory.providers.NoMemory
+import ai.koog.prompt.dsl.Prompt
+import ai.koog.prompt.llm.LLModel
+import ai.koog.prompt.message.Message
+import ai.koog.prompt.structure.json.JsonStructuredData
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.serialization.Serializable
 
 /**
  * Memory implementation for AI agents that provides persistent storage and retrieval of facts.
@@ -46,7 +53,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
  *             storage = SimpleStorage(JVMFileSystemProvider),
  *             root = Path("memory/data")
  *         )
- *         
+ *
  *         // Configure scope names (optional)
  *         featureName = "code-assistant"
  *         productName = "my-ide"
@@ -79,12 +86,16 @@ import io.github.oshai.kotlinlogging.KotlinLogging
  * @see AgentMemoryProvider
  * @see MemoryScopesProfile
  */
+@OptIn(InternalAgentsApi::class)
 public class AgentMemory(
-    internal val agentMemory: AgentMemoryProvider,
-    internal val llm: AIAgentLLMContext,
-    internal val scopesProfile: MemoryScopesProfile
+    @property:InternalAgentsApi
+    public val agentMemory: AgentMemoryProvider,
+    @property:InternalAgentsApi
+    public val llm: AIAgentLLMContext,
+    @property:InternalAgentsApi
+    public val scopesProfile: MemoryScopesProfile
 ) {
-    private val logger = KotlinLogging.logger {  }
+    private val logger = KotlinLogging.logger { }
 
     private fun getCurrentTimestamp(): Long = DefaultTimeProvider.getCurrentTimestamp()
 
@@ -203,7 +214,8 @@ public class AgentMemory(
      * ```
      */
     public companion object Feature : AIAgentFeature<Config, AgentMemory> {
-        override val key: AIAgentStorageKey<AgentMemory> = createStorageKey<AgentMemory>("local-ai-agent-memory-feature")
+        override val key: AIAgentStorageKey<AgentMemory> =
+            createStorageKey<AgentMemory>("local-ai-agent-memory-feature")
 
         /**
          * Creates the initial configuration for the AgentMemory feature.
@@ -232,7 +244,7 @@ public class AgentMemory(
          *             storage = SimpleStorage(JVMFileSystemProvider),
          *             root = Path("memory/data")
          *         )
-         *         
+         *
          *         // Configure scope names (optional)
          *         featureName = "bank-assistant"
          *         productName = "my-bank"
@@ -274,20 +286,29 @@ public class AgentMemory(
      * @param concept The concept to extract facts about
      * @param subject The subject categorization for the facts (e.g., User, Project)
      * @param scope The visibility scope for the facts (e.g., Agent, Feature, Product)
-     * @param preserveQuestionsInLLMChat If true, keeps the fact extraction messages in the chat history
+     * @param retrievalModel LLM that will be used for fact retrieval from the history (by default, the same model as the current one will be used)
      */
     public suspend fun saveFactsFromHistory(
         concept: Concept,
         subject: MemorySubject,
         scope: MemoryScope,
-        preserveQuestionsInLLMChat: Boolean = false
+        retrievalModel: LLModel? = null
     ) {
         llm.writeSession {
-            val facts = retrieveFactsFromHistory(concept, preserveQuestionsInLLMChat)
+            val initialModel = model
+            if (retrievalModel != null) {
+                model = retrievalModel
+                logger.info { "Using model: ${retrievalModel.id}" }
+            }
+            val facts = retrieveFactsFromHistory(concept)
 
             // Save facts to memory
             agentMemory.save(facts, subject, scope)
             logger.info { "Saved fact for concept '${concept.keyword}' in scope $scope: $facts" }
+            if (retrievalModel != null) {
+                model = initialModel
+                logger.info { "Switching back to model: ${initialModel.id}" }
+            }
         }
     }
 
@@ -315,6 +336,7 @@ public class AgentMemory(
      * @param scopes List of memory scopes to search in (Agent, Feature, etc.). By default all scopes are used.
      * @param subjects List of subjects to search in (User, Project, etc.). By default all registered subjects are used.
      */
+    @OptIn(InternalAgentsApi::class)
     public suspend fun loadFactsToAgent(
         concept: Concept,
         scopes: List<MemoryScopeType> = MemoryScopeType.entries,
@@ -456,13 +478,24 @@ public class AgentMemory(
  * The function handles both single and multiple facts based on the concept's factType.
  *
  * @param concept The concept to extract facts about
- * @param preserveQuestionsInLLMChat If true, keeps the fact extraction messages in the chat history
  * @return A Fact object (either SingleFact or MultipleFacts) containing the extracted information
  */
+@OptIn(InternalAgentsApi::class)
 internal suspend fun AIAgentLLMWriteSession.retrieveFactsFromHistory(
-    concept: Concept,
-    preserveQuestionsInLLMChat: Boolean
+    concept: Concept
 ): Fact {
+    @Serializable
+    @LLMDescription("Fact text")
+    data class FactStructure(
+        val fact: String
+    )
+
+    @Serializable
+    @LLMDescription("Facts list")
+    data class FactListStructure(
+        val facts: List<FactStructure>
+    )
+
     // Add a message asking to retrieve facts about the concept
     val promptForCompression = when (concept.factType) {
         FactType.SINGLE -> MemoryPrompts.singleFactPrompt(concept)
@@ -471,31 +504,53 @@ internal suspend fun AIAgentLLMWriteSession.retrieveFactsFromHistory(
 
     // remove tailing tool calls as we didn't provide any result for them
     dropTrailingToolCalls()
-    updatePrompt { user(promptForCompression) }
-    val response = requestLLMWithoutTools()
+
+    val oldPrompt = this.prompt
+
+    rewritePrompt {
+        // Combine all history into one message with XML tags
+        // to prevent LLM from continuing answering in a tool_call -> tool_result pattern
+        val combinedMessage = buildString {
+            append("<${MemoryPrompts.historyWrapperTag}>\n")
+            oldPrompt.messages.forEach { message ->
+                when (message) {
+                    is Message.System -> append("<user>\n${message.content}\n</user>\n")
+                    is Message.User -> append("<user>\n${message.content}\n</user>\n")
+                    is Message.Assistant -> append("<assistant>\n${message.content}\n</assistant>\n")
+                    is Message.Tool.Call -> append("<tool_call tool=${message.tool}>\n${message.content}\n</tool_call>\n")
+                    is Message.Tool.Result -> append("<tool_result tool=${message.tool}>\n${message.content}\n</tool_result>\n")
+                }
+            }
+            append("</${MemoryPrompts.historyWrapperTag}>\n")
+        }
+
+        // Put Compression prompt as a System instruction
+        val newPrompt = Prompt.build(id = oldPrompt.id) {
+            system (promptForCompression)
+            user (combinedMessage)
+        }
+
+        return@rewritePrompt newPrompt
+    }
 
     val timestamp = getCurrentTimestamp()
-    // Parse the response into facts
+
     val facts = when (concept.factType) {
         FactType.SINGLE -> {
-            SingleFact(concept = concept, value = response.content.trim(), timestamp = timestamp)
+            val response = requestLLMStructured(JsonStructuredData.createJsonStructure<FactStructure>())
+            SingleFact(concept = concept, value = response.getOrNull()?.structure?.fact ?: "No facts extracted", timestamp = timestamp)
         }
 
         FactType.MULTIPLE -> {
-            val factsList = response.content
-                .split("\n")
-                .filter { it.isNotBlank() }
-                .map { it.trim().removePrefix("-").trim() }
-            MultipleFacts(concept = concept, values = factsList, timestamp = timestamp)
+            val response = requestLLMStructured(JsonStructuredData.createJsonStructure<FactListStructure>())
+            val factsList = response.getOrNull()?.structure?.facts ?: emptyList()
+            MultipleFacts(concept = concept, values = factsList.map { it.fact }, timestamp = timestamp)
         }
     }
 
-    // Remove the fact extraction messages if not preserving them
-    if (!preserveQuestionsInLLMChat) {
-        rewritePrompt { oldPrompt ->
-            oldPrompt.withMessages { it.dropLast(2) }
-        }
-    }
+    // Restore the original prompt
+    rewritePrompt { oldPrompt }
+
     return facts
 }
 

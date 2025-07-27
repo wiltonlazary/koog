@@ -17,6 +17,7 @@ import ai.koog.agents.features.eventHandler.feature.EventHandlerConfig
 import ai.koog.agents.features.tracing.feature.Tracing
 import ai.koog.integration.tests.utils.Models
 import ai.koog.integration.tests.utils.RetryUtils.withRetry
+import ai.koog.prompt.dsl.ModerationResult
 import ai.koog.prompt.dsl.Prompt
 import ai.koog.prompt.dsl.prompt
 import ai.koog.prompt.executor.clients.LLMClient
@@ -102,6 +103,13 @@ internal class ReportingLLMLLMClient(
         }
         underlyingClient.executeStreaming(prompt, model)
             .collect(this)
+    }
+
+    override suspend fun moderate(
+        prompt: Prompt,
+        model: LLModel
+    ): ModerationResult {
+        throw NotImplementedError("Moderation not needed for this test")
     }
 }
 
@@ -587,6 +595,8 @@ class AIAgentMultipleLLMIntegrationTest {
 
     @Test
     fun integration_testAIAgentOpenAIAndAnthropic() = runTest(timeout = 600.seconds) {
+        Models.assumeAvailable(LLMProvider.OpenAI)
+        Models.assumeAvailable(LLMProvider.Anthropic)
         // Create the clients
         val eventsChannel = Channel<Event>(Channel.UNLIMITED)
         val fs = MockFileSystem()
@@ -654,6 +664,9 @@ class AIAgentMultipleLLMIntegrationTest {
 
     @Test
     fun integration_testTerminationOnIterationsLimitExhaustion() = runTest(timeout = 600.seconds) {
+        Models.assumeAvailable(LLMProvider.OpenAI)
+        Models.assumeAvailable(LLMProvider.Anthropic)
+
         val eventsChannel = Channel<Event>(Channel.UNLIMITED)
         val fs = MockFileSystem()
         var errorMessage: String? = null
@@ -695,6 +708,7 @@ class AIAgentMultipleLLMIntegrationTest {
 
     @Test
     fun integration_testAnthropicAgent() = runTest {
+        Models.assumeAvailable(LLMProvider.Anthropic)
         val eventsChannel = Channel<Event>(Channel.UNLIMITED)
         val fs = MockFileSystem()
         val eventHandlerConfig: EventHandlerConfig.() -> Unit = {
@@ -725,6 +739,8 @@ class AIAgentMultipleLLMIntegrationTest {
 
     @Test
     fun integration_testOpenAIAnthropicAgentWithTools() = runTest(timeout = 300.seconds) {
+        Models.assumeAvailable(LLMProvider.OpenAI)
+        Models.assumeAvailable(LLMProvider.Anthropic)
         val fs = MockFileSystem()
         val eventHandlerConfig: EventHandlerConfig.() -> Unit = {
             onToolCall { eventContext ->
@@ -747,9 +763,11 @@ class AIAgentMultipleLLMIntegrationTest {
     @Test
     fun integration_testAnthropicAgentEnumSerialization() {
         runBlocking {
+            val llmModel = AnthropicModels.Sonnet_3_7
+            Models.assumeAvailable(llmModel.provider)
             val agent = AIAgent(
                 executor = simpleAnthropicExecutor(anthropicApiKey),
-                llmModel = AnthropicModels.Sonnet_3_7,
+                llmModel = llmModel,
                 systemPrompt = "You are a calculator with access to the calculator tools. Please call tools!!!",
                 toolRegistry = ToolRegistry {
                     tool(CalculatorTool)
@@ -782,6 +800,7 @@ class AIAgentMultipleLLMIntegrationTest {
     @ParameterizedTest
     @MethodSource("modelsWithVisionCapability")
     fun integration_testAgentWithImageCapability(model: LLModel) = runTest(timeout = 120.seconds) {
+        Models.assumeAvailable(model.provider)
         val fs = MockFileSystem()
         val eventHandlerConfig: EventHandlerConfig.() -> Unit = {
             onToolCall { eventContext ->
@@ -844,6 +863,7 @@ class AIAgentMultipleLLMIntegrationTest {
     @ParameterizedTest
     @MethodSource("modelsWithVisionCapability")
     fun integration_testAgentWithImageCapabilityPrompt(model: LLModel) = runTest(timeout = 120.seconds) {
+        Models.assumeAvailable(model.provider)
         val fs = MockFileSystem()
         val eventHandlerConfig: EventHandlerConfig.() -> Unit = {
             onToolCall { eventContext ->
