@@ -1,6 +1,7 @@
 package ai.koog.prompt.llm
 
 import kotlinx.serialization.Serializable
+import org.jetbrains.annotations.ApiStatus.Experimental
 
 /**
  * Represents a specific capability or feature of an LLM (Large Language Model). This is a sealed class,
@@ -101,13 +102,13 @@ public sealed class LLMCapability(public val id: String) {
      * such as transcription, audio generation, or audio-based interactions.
      */
     @Serializable
-    public data object Audio: LLMCapability("audio")
+    public data object Audio : LLMCapability("audio")
 
     /**
      * Represents a specific language model capability associated with handling documents.
      */
     @Serializable
-    public data object Document: LLMCapability("document")
+    public data object Document : LLMCapability("document")
 
     /**
      * Represents the capability of generating embeddings within the context of language models.
@@ -125,7 +126,7 @@ public sealed class LLMCapability(public val id: String) {
     /**
      * Represents the "completion" capability for Language Learning Models (LLMs). This capability
      * typically encompasses the generation of text or content based on the given input context.
-     * It belongs to the `LLMCapability` sealed class hierarchy and is identifiable by the `embed` ID.
+     * It belongs to the `LLMCapability` sealed class hierarchy and is identifiable by the `completion` ID.
      *
      * This capability can be utilized within an LLM to perform tasks such as completing a sentence,
      * generating suggestions, or producing content that aligns with the given input data and context.
@@ -139,7 +140,7 @@ public sealed class LLMCapability(public val id: String) {
      * Use this capability to represent models that support caching functionalities.
      */
     @Serializable
-    public data object PromptCaching: LLMCapability("promptCaching")
+    public data object PromptCaching : LLMCapability("promptCaching")
 
     /**
      * Represents a capability in the Large Language Model (LLM) for content moderation.
@@ -149,7 +150,7 @@ public sealed class LLMCapability(public val id: String) {
      * self-harm, sexual content, violence, etc.
      */
     @Serializable
-    public data object Moderation: LLMCapability("moderation")
+    public data object Moderation : LLMCapability("moderation")
 
     /**
      * Represents a structured schema capability for a language model. The schema defines certain characteristics or
@@ -166,25 +167,54 @@ public sealed class LLMCapability(public val id: String) {
          * Represents a sealed class defining JSON schema support as a part of an AI model's capability.
          * Each subtype of this class specifies a distinct level of JSON support.
          *
-         * @property support Describes the type of JSON support (e.g., "simple", "full").
+         * @property support Describes the type of JSON support (e.g., "basic", "standard").
          */
         @Serializable
-        public sealed class JSON(public val support: String) : Schema("json-$support") {
+        public sealed class JSON(public val support: String) : Schema("$support-json") {
             /**
-             * Represents a simple JSON schema support capability within the context of language learning models (LLMs).
-             * Used to specify lightweight or basic JSON processing capabilities.
+             * Represents a basic JSON schema support capability.
+             * Used to specify lightweight or fundamental JSON processing capabilities.
+             * This format primarily focuses on nested data definitions without advanced JSON Schema functionalities.
              */
             @Serializable
-            public data object Simple : JSON("simple")
+            public data object Basic : JSON("basic")
 
             /**
-             * Represents a data object for the "full" JSON schema type.
-             *
-             * This class provides a specific implementation of the parent sealed class `JSON`, with
-             * the `support` parameter set to `"full"`. It is used to define JSON schema support for full capabilities.
+             * Represents a standard JSON schema support capability, according to https://json-schema.org/.
+             * This format is a proper subset of the official JSON Schema specification.
              */
             @Serializable
-            public data object Full : JSON("full")
+            public data object Standard : JSON("standard")
         }
+    }
+
+    /**
+     * Represents an OpenAI-related API endpoint for Large Language Model (LLM) operations.
+     *
+     * This sealed class serves as a specific capability type for OpenAI-based LLM. It provides predefined
+     * endpoints that correspond to specific functionalities, such as generating completions or accessing responses.
+     *
+     * @param endpoint A string identifier representing the OpenAI endpoint's functionality.
+     */
+    @Serializable
+    public sealed class OpenAIEndpoint(public val endpoint: String) : LLMCapability(endpoint) {
+        /**
+         * Represents the chat completion endpoint capability for an OpenAI-based LLM.
+         *
+         * This capability identifies the chat completion-based interaction capability of OpenAI-based LLM.
+         * https://platform.openai.com/docs/api-reference/chat
+         */
+        @Serializable
+        public data object Completions : OpenAIEndpoint("openai-endpoint-chat-completions")
+
+        /**
+         * Represents the responses endpoint capability for an OpenAI-based LLM.
+         *
+         * This capability identifies the response-based interaction capability of OpenAI-based LLM.
+         * https://platform.openai.com/docs/api-reference/responses
+         */
+        @Serializable
+        @Experimental
+        public data object Responses : OpenAIEndpoint("openai-endpoint-responses")
     }
 }

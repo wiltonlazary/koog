@@ -4,18 +4,19 @@ import ai.koog.agents.core.tools.ToolDescriptor
 import ai.koog.prompt.dsl.ModerationResult
 import ai.koog.prompt.dsl.Prompt
 import ai.koog.prompt.executor.model.PromptExecutor
-import ai.koog.prompt.executor.model.PromptExecutorExt.execute
 import ai.koog.prompt.llm.LLModel
 import ai.koog.prompt.message.Message
 import ai.koog.prompt.message.ResponseMetaInfo
-import io.ktor.utils.io.*
+import ai.koog.prompt.streaming.StreamFrame
+import ai.koog.prompt.streaming.toStreamFrames
+import io.ktor.utils.io.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import kotlinx.datetime.Clock
-import kotlinx.datetime.Instant
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlin.time.Clock
+import kotlin.time.Instant
 
 object CalculatorChatExecutor : PromptExecutor {
     private val json = Json {
@@ -52,19 +53,20 @@ object CalculatorChatExecutor : PromptExecutor {
         return listOf(result)
     }
 
-    override suspend fun executeStreaming(prompt: Prompt, model: LLModel): Flow<String> =
+    override fun executeStreaming(
+        prompt: Prompt,
+        model: LLModel,
+        tools: List<ToolDescriptor>
+    ): Flow<StreamFrame> =
         flow {
-        try {
-            val response = execute(prompt, model)
-            emit(response.content)
+            try {
+                execute(prompt, model, tools).toStreamFrames().forEach { emit(it) }
+            } catch (t: CancellationException) {
+                throw t
+            } catch (t: Throwable) {
+                println("[DEBUG_LOG] Error while emitting response: ${t::class.simpleName}(${t.message})")
+            }
         }
-        catch (t: CancellationException) {
-            throw t
-        }
-        catch (t: Throwable) {
-            println("[DEBUG_LOG] Error while emitting response: ${t::class.simpleName}(${t.message})")
-        }
-    }
 
     override suspend fun moderate(
         prompt: Prompt,
@@ -72,4 +74,6 @@ object CalculatorChatExecutor : PromptExecutor {
     ): ModerationResult {
         throw UnsupportedOperationException("Moderation is not needed for CalculatorExecutor")
     }
+
+    override fun close() {}
 }

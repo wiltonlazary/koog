@@ -5,9 +5,10 @@ import ai.koog.prompt.llm.LLMCapability
 import ai.koog.prompt.llm.LLModel
 import ai.koog.prompt.message.Message
 import ai.koog.prompt.message.ResponseMetaInfo
+import ai.koog.prompt.streaming.StreamFrame
 import io.github.oshai.kotlinlogging.KotlinLogging
-import kotlinx.datetime.Clock
 import kotlinx.serialization.json.Json
+import kotlin.time.Clock
 
 internal object BedrockMetaLlamaSerialization {
 
@@ -33,9 +34,11 @@ internal object BedrockMetaLlamaSerialization {
         return LlamaRequest(
             prompt = promptText,
             maxGenLen = 2048,
-            temperature = if (model.capabilities.contains(LLMCapability.Temperature)) {
+            temperature = if (model.supports(LLMCapability.Temperature)) {
                 prompt.params.temperature
-            } else null
+            } else {
+                null
+            }
         )
     }
 
@@ -47,7 +50,7 @@ internal object BedrockMetaLlamaSerialization {
                 content = response.generation,
                 finishReason = response.stopReason,
                 metaInfo = ResponseMetaInfo.Companion.create(
-                    clock,
+                    clock = clock,
                     inputTokensCount = response.promptTokenCount,
                     outputTokensCount = response.generationTokenCount,
                     totalTokensCount = response.promptTokenCount?.let { input ->
@@ -58,8 +61,25 @@ internal object BedrockMetaLlamaSerialization {
         )
     }
 
-    internal fun parseLlamaStreamChunk(chunkJsonString: String): String {
+    internal fun parseLlamaStreamChunk(chunkJsonString: String, clock: Clock = Clock.System): List<StreamFrame> {
         val chunk = json.decodeFromString<LlamaStreamChunk>(chunkJsonString)
-        return chunk.generation ?: ""
+        return buildList {
+            chunk.generation?.let(StreamFrame::TextDelta)?.let(::add)
+            if (chunk.stopReason != null) {
+                add(
+                    StreamFrame.End(
+                        finishReason = chunk.stopReason,
+                        metaInfo = ResponseMetaInfo.create(
+                            clock = clock,
+                            inputTokensCount = chunk.promptTokenCount,
+                            outputTokensCount = chunk.generationTokenCount,
+                            totalTokensCount = chunk.promptTokenCount?.let { input ->
+                                chunk.generationTokenCount?.let { output -> input + output }
+                            }
+                        )
+                    )
+                )
+            }
+        }
     }
 }

@@ -6,7 +6,6 @@ import ai.koog.agents.core.tools.annotations.InternalAgentToolsApi
 import ai.koog.agents.core.tools.annotations.LLMDescription
 import ai.koog.agents.core.tools.annotations.Tool
 import ai.koog.agents.core.tools.reflect.ToolFromCallable.VarArgsSerializer
-import ai.koog.agents.core.tools.reflect.ToolsFromCallableTest.Companion.ToolsEnabler
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -55,14 +54,13 @@ class ReflectionArgsSerializerTest {
         )
     }
 
-
     @Serializable
     data class MySpecificToolArgs(
         @LLMDescription("arg Long") val argLong: Long,
         @LLMDescription("arg Double") val argDouble: Double
     )
 
-    class MySpecificTool() {
+    class MySpecificTool {
         @Tool
         @LLMDescription("Specific tool")
         suspend fun execute(@LLMDescription("arg Long") argLong: Long): String {
@@ -71,7 +69,13 @@ class ReflectionArgsSerializerTest {
 
         @Tool
         @LLMDescription("Specific tool without tool annotation")
-        suspend fun executeDouble(@LLMDescription("arg Long") argDouble: Double): String {
+        suspend fun executeDouble(@LLMDescription("arg Double") argDouble: Double): String {
+            return "Specific tool called with $argDouble"
+        }
+
+        @Tool("custom_name")
+        @LLMDescription("Specific tool without tool annotation")
+        suspend fun executeCustomName(@LLMDescription("arg Double") argDouble: Double): String {
             return "Specific tool called with $argDouble"
         }
 
@@ -79,9 +83,14 @@ class ReflectionArgsSerializerTest {
         @LLMDescription("Specific tool without tool annotation")
         suspend fun executeWithArgs(
             @LLMDescription("args Tool") args: MySpecificToolArgs,
-            @LLMDescription("args Tool") args2: MySpecificToolArgs
+            @LLMDescription("args2 Tool") args2: MySpecificToolArgs
         ): String {
-            return "Specific tool called with ${args.argLong} and ${args.argDouble}"
+            return "Specific tool called with ${
+                listOf(
+                    args,
+                    args2
+                ).joinToString(", ") { "${it.argLong} and ${it.argDouble}" }
+            }"
         }
 
         suspend fun executeWithListArg(@LLMDescription("args Tool") args: List<MySpecificToolArgs>): String {
@@ -98,8 +107,7 @@ class ReflectionArgsSerializerTest {
             "Specific tool called with 42",
             runBlocking {
                 val args = tool.decodeArgs(buildJsonObject { put("argLong", JsonPrimitive(42)) })
-                val rawResult = tool.execute(args, ToolsEnabler)
-                rawResult.result
+                tool.execute(args)
             },
         )
     }
@@ -107,14 +115,29 @@ class ReflectionArgsSerializerTest {
     @Test
     fun testToolDoubleArg() {
         val toolClass = MySpecificTool()
-        val tool: ToolFromCallable = toolClass::executeDouble.asTool(ToolsFromCallableTest.Companion.json)
+        val tool = toolClass::executeDouble.asTool(ToolsFromCallableTest.Companion.json)
 
         assertEquals(
             "Specific tool called with 42.0",
             runBlocking {
                 val args = tool.decodeArgs(buildJsonObject { put("argDouble", JsonPrimitive(42.0)) })
-                val rawResult = tool.execute(args, ToolsEnabler)
-                rawResult.result
+                tool.execute(args)
+            },
+        )
+    }
+
+    @Test
+    fun testToolCustomName() {
+        val toolClass = MySpecificTool()
+        val tool = toolClass::executeCustomName.asTool(ToolsFromCallableTest.Companion.json)
+
+        assertEquals("custom_name", tool.name)
+        assertEquals("custom_name", tool.descriptor.name)
+        assertEquals(
+            "Specific tool called with 42.0",
+            runBlocking {
+                val args = tool.decodeArgs(buildJsonObject { put("argDouble", JsonPrimitive(42.0)) })
+                tool.execute(args)
             },
         )
     }
@@ -125,25 +148,28 @@ class ReflectionArgsSerializerTest {
         val tool = toolClass::executeWithArgs.asTool(ToolsFromCallableTest.Companion.json)
 
         assertEquals(
-            "Specific tool called with 42 and 3.14",
+            "Specific tool called with 42 and 3.14, 42 and 3.14",
             runBlocking {
                 val args: ToolFromCallable.VarArgs =
-                    tool.decodeArgs(buildJsonObject {
-                        put(
-                            "args",
-                            buildJsonObject {
-                                put("argLong", JsonPrimitive(42))
-                                put("argDouble", JsonPrimitive(3.14))
-                            })
-                        put(
-                            "args2",
-                            buildJsonObject {
-                                put("argLong", JsonPrimitive(42))
-                                put("argDouble", JsonPrimitive(3.14))
-                            })
-                    })
-                val rawResult = tool.execute(args, ToolsEnabler)
-                rawResult.result
+                    tool.decodeArgs(
+                        buildJsonObject {
+                            put(
+                                "args",
+                                buildJsonObject {
+                                    put("argLong", JsonPrimitive(42))
+                                    put("argDouble", JsonPrimitive(3.14))
+                                }
+                            )
+                            put(
+                                "args2",
+                                buildJsonObject {
+                                    put("argLong", JsonPrimitive(42))
+                                    put("argDouble", JsonPrimitive(3.14))
+                                }
+                            )
+                        }
+                    )
+                tool.execute(args)
             }
         )
     }
@@ -157,22 +183,28 @@ class ReflectionArgsSerializerTest {
             "Specific tool called with 42 and 3.14, 22 and 3.14",
             runBlocking {
                 val args: ToolFromCallable.VarArgs =
-                    tool.decodeArgs(buildJsonObject {
-                        put(
-                            "args",
-                            buildJsonArray {
-                                add(buildJsonObject {
-                                    put("argLong", JsonPrimitive(42))
-                                    put("argDouble", JsonPrimitive(3.14))
-                                })
-                                add(buildJsonObject {
-                                    put("argLong", JsonPrimitive(22))
-                                    put("argDouble", JsonPrimitive(3.14))
-                                })
-                            })
-                    })
-                val rawResult = tool.execute(args, ToolsEnabler)
-                rawResult.result
+                    tool.decodeArgs(
+                        buildJsonObject {
+                            put(
+                                "args",
+                                buildJsonArray {
+                                    add(
+                                        buildJsonObject {
+                                            put("argLong", JsonPrimitive(42))
+                                            put("argDouble", JsonPrimitive(3.14))
+                                        }
+                                    )
+                                    add(
+                                        buildJsonObject {
+                                            put("argLong", JsonPrimitive(22))
+                                            put("argDouble", JsonPrimitive(3.14))
+                                        }
+                                    )
+                                }
+                            )
+                        }
+                    )
+                tool.execute(args)
             }
         )
     }

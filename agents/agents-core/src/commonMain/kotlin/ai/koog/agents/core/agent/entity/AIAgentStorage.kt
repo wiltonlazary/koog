@@ -11,7 +11,9 @@ import kotlinx.coroutines.sync.withLock
  *
  * @param name The string identifier that uniquely represents the storage key.
  */
-public data class AIAgentStorageKey<T : Any>(val name: String)
+public class AIAgentStorageKey<T : Any>(public val name: String) {
+    override fun toString(): String = "${super.toString()}(name=$name)"
+}
 
 /**
  * Creates a storage key for a specific type, allowing identification and retrieval of values associated with it.
@@ -19,7 +21,7 @@ public data class AIAgentStorageKey<T : Any>(val name: String)
  * @param name The name of the storage key, used to uniquely identify it.
  * @return A new instance of [AIAgentStorageKey] for the specified type.
  */
-public inline fun <reified T : Any> createStorageKey(name: String): AIAgentStorageKey<T> = AIAgentStorageKey<T>(name)
+public fun <T : Any> createStorageKey(name: String): AIAgentStorageKey<T> = AIAgentStorageKey(name)
 
 /**
  * Concurrent-safe key-value storage for an agent.
@@ -27,7 +29,7 @@ public inline fun <reified T : Any> createStorageKey(name: String): AIAgentStora
  * set and retrieve data using it by calling [set] and [get].
  *
  */
-public class AIAgentStorage internal constructor() {
+public class AIAgentStorage {
     private val mutex = Mutex()
     private val storage = mutableMapOf<AIAgentStorageKey<*>, Any>()
 
@@ -62,7 +64,6 @@ public class AIAgentStorage internal constructor() {
     public suspend fun <T : Any> get(key: AIAgentStorageKey<T>): T? = mutex.withLock {
         storage[key] as T?
     }
-
 
     /**
      * Retrieves the non-null value associated with the given key from the storage.

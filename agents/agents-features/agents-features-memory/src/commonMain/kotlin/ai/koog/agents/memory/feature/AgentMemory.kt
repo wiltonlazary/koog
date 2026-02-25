@@ -1,28 +1,42 @@
 package ai.koog.agents.memory.feature
 
-import ai.koog.agents.core.agent.context.AIAgentContextBase
+import ai.koog.agents.core.agent.context.AIAgentContext
 import ai.koog.agents.core.agent.context.AIAgentLLMContext
+import ai.koog.agents.core.agent.context.featureOrThrow
 import ai.koog.agents.core.agent.entity.AIAgentStorageKey
 import ai.koog.agents.core.agent.entity.createStorageKey
 import ai.koog.agents.core.agent.session.AIAgentLLMWriteSession
 import ai.koog.agents.core.annotation.InternalAgentsApi
 import ai.koog.agents.core.dsl.extension.dropTrailingToolCalls
-import ai.koog.agents.core.feature.AIAgentFeature
-import ai.koog.agents.core.feature.AIAgentPipeline
+import ai.koog.agents.core.feature.AIAgentFunctionalFeature
+import ai.koog.agents.core.feature.AIAgentGraphFeature
+import ai.koog.agents.core.feature.AIAgentPlannerFeature
+import ai.koog.agents.core.feature.config.FeatureConfig
+import ai.koog.agents.core.feature.pipeline.AIAgentFunctionalPipeline
+import ai.koog.agents.core.feature.pipeline.AIAgentGraphPipeline
+import ai.koog.agents.core.feature.pipeline.AIAgentPipeline
+import ai.koog.agents.core.feature.pipeline.AIAgentPlannerPipeline
 import ai.koog.agents.core.tools.annotations.LLMDescription
-import ai.koog.agents.features.common.config.FeatureConfig
 import ai.koog.agents.memory.config.MemoryScopeType
 import ai.koog.agents.memory.config.MemoryScopesProfile
-import ai.koog.agents.memory.model.*
-import ai.koog.agents.memory.model.DefaultTimeProvider.getCurrentTimestamp
+import ai.koog.agents.memory.model.Concept
+import ai.koog.agents.memory.model.Fact
+import ai.koog.agents.memory.model.FactType
+import ai.koog.agents.memory.model.MemoryScope
+import ai.koog.agents.memory.model.MemorySubject
+import ai.koog.agents.memory.model.MultipleFacts
+import ai.koog.agents.memory.model.SingleFact
 import ai.koog.agents.memory.prompts.MemoryPrompts
 import ai.koog.agents.memory.providers.AgentMemoryProvider
 import ai.koog.agents.memory.providers.NoMemory
 import ai.koog.prompt.dsl.Prompt
 import ai.koog.prompt.llm.LLModel
 import ai.koog.prompt.message.Message
-import ai.koog.prompt.structure.json.JsonStructuredData
+import ai.koog.prompt.structure.StructuredRequest
+import ai.koog.prompt.structure.StructuredRequestConfig
+import ai.koog.prompt.structure.json.JsonStructure
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.datetime.Clock
 import kotlinx.serialization.Serializable
 
 /**
@@ -80,7 +94,6 @@ import kotlinx.serialization.Serializable
  * ```
  *
  * @property agentMemory The provider that handles the actual storage and retrieval of facts
- * @property llm The agent's LLM context for integrating memory with the conversation
  * @property scopesProfile Profile containing scope names for memory operations
  *
  * @see AgentMemoryProvider
@@ -91,13 +104,9 @@ public class AgentMemory(
     @property:InternalAgentsApi
     public val agentMemory: AgentMemoryProvider,
     @property:InternalAgentsApi
-    public val llm: AIAgentLLMContext,
-    @property:InternalAgentsApi
     public val scopesProfile: MemoryScopesProfile
 ) {
     private val logger = KotlinLogging.logger { }
-
-    private fun getCurrentTimestamp(): Long = DefaultTimeProvider.getCurrentTimestamp()
 
     /**
      * Configuration for the AgentMemory feature.
@@ -162,107 +171,59 @@ public class AgentMemory(
                 scopesProfile.names[MemoryScopeType.PRODUCT] = value
             }
 
-        private companion object {
+        internal companion object {
             const val UNKNOWN_NAME = "unknown"
         }
     }
 
     /**
-     * Feature companion object that allows installing the [AgentMemory] feature in an agent.
-     *
-     * This object implements [AIAgentFeature] to provide the necessary functionality
-     * for integrating memory capabilities into an agent.
-     *
-     * To install the AgentMemory feature in your agent:
-     * ```kotlin
-     * val agent = AIAgents(
-     *     strategy = myStrategy,
-     *     promptExecutor = myExecutor
-     * ) {
-     *     // Install memory feature with custom configuration
-     *     install(AgentMemory) {
-     *         // Configure memory provider (required)
-     *         memoryProvider = LocalFileMemoryProvider(
-     *             config = LocalMemoryConfig("my-agent-memory"),
-     *             storage = SimpleStorage(JVMFileSystemProvider),
-     *             root = Path("memory/data")
-     *         )
-     *
-     *         // Configure scope names (optional)
-     *         featureName = "bank-assistant"
-     *         productName = "my-bank"
-     *         organizationName = "my-company"
-     *     }
-     * }
-     * ```
-     *
-     * Example usage within an agent node:
-     * ```kotlin
-     * val rememberUserPreference by node {
-     *     withMemory {
-     *         // Save a fact about user preference
-     *         agentMemory.save(
-     *             fact = SingleFact(
-     *                 concept = Concept("preferred-language", "User's preferred programming language"),
-     *                 value = "Kotlin"
-     *             ),
-     *             subject = MemorySubjects.User,
-     *             scope = MemoryScope.Product("my-ide")
-     *         )
-     *     }
-     * }
-     * ```
+     * Companion object implementing agent feature, handling [AgentMemory] creation and installation.
      */
-    public companion object Feature : AIAgentFeature<Config, AgentMemory> {
+    public companion object Feature :
+        AIAgentGraphFeature<Config, AgentMemory>,
+        AIAgentFunctionalFeature<Config, AgentMemory>,
+        AIAgentPlannerFeature<Config, AgentMemory> {
         override val key: AIAgentStorageKey<AgentMemory> =
             createStorageKey<AgentMemory>("local-ai-agent-memory-feature")
 
-        /**
-         * Creates the initial configuration for the AgentMemory feature.
-         *
-         * @return A new Config instance with default values
-         */
         override fun createInitialConfig(): Config = Config()
 
         /**
-         * Installs the AgentMemory feature in an agent.
-         *
-         * This method sets up the memory feature with the provided configuration,
-         * creating an AgentMemory instance that integrates with the agent's pipeline.
-         *
-         * Example usage:
-         * ```kotlin
-         * val agent = AIAgents(
-         *     strategy = myStrategy,
-         *     promptExecutor = myExecutor
-         * ) {
-         *     // Install memory feature with custom configuration
-         *     install(AgentMemory) {
-         *         // Configure memory provider (required)
-         *         memoryProvider = LocalFileMemoryProvider(
-         *             config = LocalMemoryConfig("my-agent-memory"),
-         *             storage = SimpleStorage(JVMFileSystemProvider),
-         *             root = Path("memory/data")
-         *         )
-         *
-         *         // Configure scope names (optional)
-         *         featureName = "bank-assistant"
-         *         productName = "my-bank"
-         *         organizationName = "my-company"
-         *     }
-         * }
-         * ```
-         *
-         * @param config The configuration for the memory feature
-         * @param pipeline The agent pipeline to install the feature into
+         * Create a feature implementation using the provided configuration.
          */
-        override fun install(config: Config, pipeline: AIAgentPipeline) {
-            pipeline.interceptContextAgentFeature(this) { agentContext ->
-                config.agentName = agentContext.strategyName
+        private fun createFeature(
+            config: Config,
+            pipeline: AIAgentPipeline,
+        ): AgentMemory {
+            val memory = AgentMemory(config.memoryProvider, config.scopesProfile)
 
-                AgentMemory(config.memoryProvider, agentContext.llm, config.scopesProfile)
+            pipeline.interceptStrategyStarting(this) { ctx ->
+                // Setting default agent name the same as strategy name
+                // TODO not very robust
+                memory.scopesProfile.let {
+                    if (MemoryScopeType.AGENT !in it.names) {
+                        it.names[MemoryScopeType.AGENT] = ctx.strategy.name
+                    }
+                }
             }
+
+            return memory
         }
+
+        override fun install(
+            config: Config,
+            pipeline: AIAgentGraphPipeline,
+        ): AgentMemory = createFeature(config, pipeline)
+
+        override fun install(
+            config: Config,
+            pipeline: AIAgentFunctionalPipeline,
+        ): AgentMemory = createFeature(config, pipeline)
+
+        override fun install(
+            config: Config,
+            pipeline: AIAgentPlannerPipeline,
+        ): AgentMemory = createFeature(config, pipeline)
     }
 
     /**
@@ -283,12 +244,14 @@ public class AgentMemory(
      * )
      * ```
      *
+     * @param llm Current LLM context to interact with the agent's chat history
      * @param concept The concept to extract facts about
      * @param subject The subject categorization for the facts (e.g., User, Project)
      * @param scope The visibility scope for the facts (e.g., Agent, Feature, Product)
      * @param retrievalModel LLM that will be used for fact retrieval from the history (by default, the same model as the current one will be used)
      */
     public suspend fun saveFactsFromHistory(
+        llm: AIAgentLLMContext,
         concept: Concept,
         subject: MemorySubject,
         scope: MemoryScope,
@@ -332,16 +295,18 @@ public class AgentMemory(
      * )
      * ```
      *
+     * @param llm Current LLM context to interact with the agent's chat history.
      * @param concept The concept to load facts about
      * @param scopes List of memory scopes to search in (Agent, Feature, etc.). By default all scopes are used.
      * @param subjects List of subjects to search in (User, Project, etc.). By default all registered subjects are used.
      */
     @OptIn(InternalAgentsApi::class)
     public suspend fun loadFactsToAgent(
+        llm: AIAgentLLMContext,
         concept: Concept,
         scopes: List<MemoryScopeType> = MemoryScopeType.entries,
         subjects: List<MemorySubject> = MemorySubject.registeredSubjects,
-    ): Unit = loadFactsToAgentImpl(scopes, subjects) { subject, scope ->
+    ): Unit = loadFactsToAgentImpl(llm, scopes, subjects) { subject, scope ->
         agentMemory.load(concept, subject, scope)
     }
 
@@ -361,13 +326,15 @@ public class AgentMemory(
      * )
      * ```
      *
+     * @param llm Current LLM context to interact with the agent's chat history.
      * @param scopes List of memory scopes to search in (Agent, Feature, etc.). By default all scopes are used.
      * @param subjects List of subjects to search in (User, Project, etc.). By default all registered subjects are used.
      */
     public suspend fun loadAllFactsToAgent(
+        llm: AIAgentLLMContext,
         scopes: List<MemoryScopeType> = MemoryScopeType.entries,
         subjects: List<MemorySubject> = MemorySubject.registeredSubjects,
-    ): Unit = loadFactsToAgentImpl(scopes, subjects, agentMemory::loadAll)
+    ): Unit = loadFactsToAgentImpl(llm, scopes, subjects, agentMemory::loadAll)
 
     /**
      * Implementation method for loading facts from memory and adding them to the LLM chat history.
@@ -379,11 +346,13 @@ public class AgentMemory(
      * 4. Formatting facts for the LLM context
      * 5. Adding the formatted facts to the LLM chat history
      *
+     * @param llm Current LLM context to interact with the agent's chat history
      * @param scopes List of memory scopes to search in
      * @param subjects List of subjects to search in
      * @param loadFacts Function that loads facts for a given subject and scope
      */
     private suspend fun loadFactsToAgentImpl(
+        llm: AIAgentLLMContext,
         scopes: List<MemoryScopeType>,
         subjects: List<MemorySubject>,
         loadFacts: suspend (subject: MemorySubject, scope: MemoryScope) -> List<Fact>
@@ -410,10 +379,14 @@ public class AgentMemory(
                     when (fact) {
                         is SingleFact -> {
                             val existingFact = singleFactsByKeyword[fact.concept.keyword]
-                            logger.info { "Processing single fact: ${fact.value}, existing: ${existingFact?.second?.value}" }
+                            logger.info {
+                                "Processing single fact: ${fact.value}, existing: ${existingFact?.second?.value}"
+                            }
                             // Replace fact only if current subject is more specific (lower ordinal)
                             if (existingFact == null || subject.priorityLevel < existingFact.first.priorityLevel) {
-                                logger.info { "Using fact from subject $subject (priorityLevel: ${subject.priorityLevel})" }
+                                logger.info {
+                                    "Using fact from subject $subject (priorityLevel: ${subject.priorityLevel})"
+                                }
                                 singleFactsByKeyword[fact.concept.keyword] = subject to fact
                             }
                         }
@@ -440,7 +413,9 @@ public class AgentMemory(
             factsByConcept.forEach { (concept, facts) ->
                 llm.writeSession {
                     val message = buildString {
-                        appendLine("Here are the relevant facts from memory about [${concept.keyword}](${concept.description.shortened()}):")
+                        appendLine(
+                            "Here are the relevant facts from memory about [${concept.keyword}](${concept.description.shortened()}):"
+                        )
                         facts.forEach { fact ->
                             when (fact) {
                                 is SingleFact -> appendLine(
@@ -458,7 +433,7 @@ public class AgentMemory(
                     }
                     logger.info { "Built message for LLM: $message" }
                     logger.info { "Updating prompt with message" }
-                    updatePrompt { user(message) }
+                    appendPrompt { user(message) }
                     logger.info { "Prompt updated" }
                 }
             }
@@ -481,8 +456,9 @@ public class AgentMemory(
  * @return A Fact object (either SingleFact or MultipleFacts) containing the extracted information
  */
 @OptIn(InternalAgentsApi::class)
-internal suspend fun AIAgentLLMWriteSession.retrieveFactsFromHistory(
-    concept: Concept
+public suspend fun AIAgentLLMWriteSession.retrieveFactsFromHistory(
+    concept: Concept,
+    clock: Clock = kotlin.time.Clock.System,
 ): Fact {
     @Serializable
     @LLMDescription("Fact text")
@@ -514,11 +490,17 @@ internal suspend fun AIAgentLLMWriteSession.retrieveFactsFromHistory(
             append("<${MemoryPrompts.historyWrapperTag}>\n")
             oldPrompt.messages.forEach { message ->
                 when (message) {
-                    is Message.System -> append("<user>\n${message.content}\n</user>\n")
+                    is Message.System -> append("<system>\n${message.content}\n</system>\n")
                     is Message.User -> append("<user>\n${message.content}\n</user>\n")
                     is Message.Assistant -> append("<assistant>\n${message.content}\n</assistant>\n")
-                    is Message.Tool.Call -> append("<tool_call tool=${message.tool}>\n${message.content}\n</tool_call>\n")
-                    is Message.Tool.Result -> append("<tool_result tool=${message.tool}>\n${message.content}\n</tool_result>\n")
+                    is Message.Reasoning -> append("<thinking>\n${message.content}\n</thinking>\n")
+                    is Message.Tool.Call -> append(
+                        "<tool_call tool=${message.tool}>\n${message.content}\n</tool_call>\n"
+                    )
+
+                    is Message.Tool.Result -> append(
+                        "<tool_result tool=${message.tool}>\n${message.content}\n</tool_result>\n"
+                    )
                 }
             }
             append("</${MemoryPrompts.historyWrapperTag}>\n")
@@ -526,24 +508,33 @@ internal suspend fun AIAgentLLMWriteSession.retrieveFactsFromHistory(
 
         // Put Compression prompt as a System instruction
         val newPrompt = Prompt.build(id = oldPrompt.id) {
-            system (promptForCompression)
-            user (combinedMessage)
+            system(promptForCompression)
+            user(combinedMessage)
         }
 
         return@rewritePrompt newPrompt
     }
 
-    val timestamp = getCurrentTimestamp()
+    val timestamp = clock.now().toEpochMilliseconds()
 
     val facts = when (concept.factType) {
         FactType.SINGLE -> {
-            val response = requestLLMStructured(JsonStructuredData.createJsonStructure<FactStructure>())
-            SingleFact(concept = concept, value = response.getOrNull()?.structure?.fact ?: "No facts extracted", timestamp = timestamp)
+            val response = requestLLMStructured(
+                config = StructuredRequestConfig(default = StructuredRequest.Manual(JsonStructure.create<FactStructure>()))
+            )
+
+            SingleFact(
+                concept = concept,
+                value = response.getOrNull()?.data?.fact ?: "No facts extracted",
+                timestamp = timestamp
+            )
         }
 
         FactType.MULTIPLE -> {
-            val response = requestLLMStructured(JsonStructuredData.createJsonStructure<FactListStructure>())
-            val factsList = response.getOrNull()?.structure?.facts ?: emptyList()
+            val response = requestLLMStructured(
+                config = StructuredRequestConfig(default = StructuredRequest.Manual(JsonStructure.create<FactListStructure>()))
+            )
+            val factsList = response.getOrNull()?.data?.facts ?: emptyList()
             MultipleFacts(concept = concept, values = factsList.map { it.fact }, timestamp = timestamp)
         }
     }
@@ -576,7 +567,7 @@ private fun String.shortened() = lines().first().take(100) + "..."
  *
  * @return The AgentMemory instance for this agent context
  */
-public fun AIAgentContextBase.memory(): AgentMemory = featureOrThrow(AgentMemory.Feature)
+public fun AIAgentContext.memory(): AgentMemory = featureOrThrow(AgentMemory)
 
 /**
  * Extension function to perform memory operations within a AIAgentStageContext.
@@ -600,6 +591,4 @@ public fun AIAgentContextBase.memory(): AgentMemory = featureOrThrow(AgentMemory
  * @param action The memory operations to perform
  * @return The result of the action
  */
-public suspend fun <T> AIAgentContextBase.withMemory(action: suspend AgentMemory.() -> T): T = memory().action()
-
-
+public suspend fun <T> AIAgentContext.withMemory(action: suspend AgentMemory.() -> T): T = memory().action()

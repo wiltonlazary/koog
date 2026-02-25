@@ -1,14 +1,17 @@
 package ai.koog.agents.features.eventHandler.feature
 
 import ai.koog.agents.core.agent.AIAgent
+import ai.koog.agents.core.agent.GraphAIAgent
 import ai.koog.agents.core.agent.config.AIAgentConfig
-import ai.koog.agents.core.agent.entity.AIAgentStrategy
+import ai.koog.agents.core.agent.entity.AIAgentGraphStrategy
 import ai.koog.agents.core.tools.ToolRegistry
-import ai.koog.agents.core.tools.ToolRegistry.Builder
 import ai.koog.prompt.dsl.prompt
 import ai.koog.prompt.executor.clients.openai.OpenAIModels
-import kotlinx.datetime.Clock
-import kotlinx.datetime.Instant
+import ai.koog.prompt.executor.model.PromptExecutor
+import ai.koog.prompt.llm.LLModel
+import ai.koog.prompt.params.LLMParams
+import kotlin.time.Clock
+import kotlin.time.Instant
 
 val ts: Instant = Instant.parse("2023-01-01T00:00:00Z")
 
@@ -17,27 +20,38 @@ val testClock: Clock = object : Clock {
 }
 
 fun createAgent(
-    strategy: AIAgentStrategy<String, String>,
+    strategy: AIAgentGraphStrategy<String, String>,
     agentId: String = "test-agent-id",
-    configureTools: Builder.() -> Unit = { },
-    installFeatures: AIAgent.FeatureContext.() -> Unit = { }
+    executor: PromptExecutor? = null,
+    promptId: String? = null,
+    systemPrompt: String? = null,
+    userPrompt: String? = null,
+    assistantPrompt: String? = null,
+    temperature: Double? = null,
+    toolRegistry: ToolRegistry? = null,
+    model: LLModel? = null,
+    installFeatures: GraphAIAgent.FeatureContext.() -> Unit = { }
 ): AIAgent<String, String> {
     val agentConfig = AIAgentConfig(
-        prompt = prompt("test", clock = testClock) {
-            system("Test system message")
-            user("Test user message")
-            assistant("Test assistant response")
+        prompt = prompt(
+            id = promptId ?: "Test prompt",
+            clock = testClock,
+            params = LLMParams(temperature = temperature)
+        ) {
+            system(systemPrompt ?: "Test system message")
+            user(userPrompt ?: "Test user message")
+            assistant(assistantPrompt ?: "Test assistant response")
         },
-        model = OpenAIModels.Chat.GPT4o,
-        maxAgentIterations = 10
+        model = model ?: OpenAIModels.Chat.GPT4o,
+        maxAgentIterations = 10,
     )
 
     return AIAgent(
         id = agentId,
-        promptExecutor = TestLLMExecutor(testClock),
+        promptExecutor = executor ?: TestLLMExecutor(testClock),
         strategy = strategy,
         agentConfig = agentConfig,
-        toolRegistry = ToolRegistry { configureTools() },
+        toolRegistry = toolRegistry ?: ToolRegistry { },
         clock = testClock,
         installFeatures = installFeatures,
     )

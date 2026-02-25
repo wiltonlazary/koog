@@ -13,9 +13,9 @@ kotlin {
         commonMain {
             dependencies {
                 api(project(":agents:agents-core"))
-                api(project(":agents:agents-features:agents-features-common"))
                 api(project(":agents:agents-tools"))
                 api(project(":agents:agents-utils"))
+                api(project(":prompt:prompt-processor"))
 
                 api(libs.kotlinx.serialization.json)
             }
@@ -26,12 +26,14 @@ kotlin {
                 implementation(kotlin("test"))
                 implementation(libs.kotlinx.coroutines.test)
                 implementation(project(":agents:agents-test"))
+                implementation(project(":test-utils"))
             }
         }
 
         jvmTest {
             dependencies {
                 implementation(kotlin("test-junit5"))
+                implementation(libs.mockk)
             }
         }
     }

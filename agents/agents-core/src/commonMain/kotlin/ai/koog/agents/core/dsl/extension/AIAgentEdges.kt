@@ -6,10 +6,9 @@ import ai.koog.agents.core.environment.ReceivedToolResult
 import ai.koog.agents.core.environment.SafeTool
 import ai.koog.agents.core.environment.toSafeResult
 import ai.koog.agents.core.tools.Tool
-import ai.koog.agents.core.tools.ToolArgs
-import ai.koog.agents.core.tools.ToolResult
-import ai.koog.prompt.message.Attachment
+import ai.koog.prompt.message.ContentPart
 import ai.koog.prompt.message.Message
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.reflect.KClass
 
 /**
@@ -18,8 +17,7 @@ import kotlin.reflect.KClass
  * @param klass The class to check instance against (not actually used, see implementation comment)
  */
 @EdgeTransformationDslMarker
-public inline infix fun <IncomingOutput, IntermediateOutput, OutgoingInput, reified T : Any>
-        AIAgentEdgeBuilderIntermediate<IncomingOutput, IntermediateOutput, OutgoingInput>.onIsInstance(
+public inline infix fun <IncomingOutput, IntermediateOutput, OutgoingInput, reified T : Any> AIAgentEdgeBuilderIntermediate<IncomingOutput, IntermediateOutput, OutgoingInput>.onIsInstance(
     /*
      klass is not used, but we need to use this trick to avoid passing all generic parameters on the usage side.
      Removing this parameter and just passing the correct type via generic reified parameter won't work, it requires all
@@ -31,7 +29,6 @@ public inline infix fun <IncomingOutput, IntermediateOutput, OutgoingInput, reif
     return onCondition { output -> output is T }
         .transformed { it as T }
 }
-
 
 /**
  * Filters and transforms the intermediate outputs of the AI agent node based on the success results of a tool operation.
@@ -47,8 +44,7 @@ public inline infix fun <IncomingOutput, IntermediateOutput, OutgoingInput, reif
  */
 @Suppress("UNCHECKED_CAST")
 @EdgeTransformationDslMarker
-public inline infix fun <IncomingOutput, OutgoingInput, reified TResult : ToolResult>
-        AIAgentEdgeBuilderIntermediate<IncomingOutput, SafeTool.Result<TResult>, OutgoingInput>.onSuccessful(
+public inline infix fun <IncomingOutput, OutgoingInput, reified TResult> AIAgentEdgeBuilderIntermediate<IncomingOutput, SafeTool.Result<TResult>, OutgoingInput>.onSuccessful(
     crossinline condition: suspend (TResult) -> Boolean
 ): AIAgentEdgeBuilderIntermediate<IncomingOutput, SafeTool.Result.Success<TResult>, OutgoingInput> =
     onIsInstance(SafeTool.Result.Success::class).transformed { it as SafeTool.Result.Success<TResult> }
@@ -68,8 +64,7 @@ public inline infix fun <IncomingOutput, OutgoingInput, reified TResult : ToolRe
  */
 @Suppress("UNCHECKED_CAST")
 @EdgeTransformationDslMarker
-public inline infix fun <IncomingOutput, OutgoingInput, reified TResult : ToolResult>
-        AIAgentEdgeBuilderIntermediate<IncomingOutput, SafeTool.Result<TResult>, OutgoingInput>.onFailure(
+public inline infix fun <IncomingOutput, OutgoingInput, reified TResult> AIAgentEdgeBuilderIntermediate<IncomingOutput, SafeTool.Result<TResult>, OutgoingInput>.onFailure(
     crossinline condition: suspend (error: String) -> Boolean
 ): AIAgentEdgeBuilderIntermediate<IncomingOutput, SafeTool.Result.Failure<TResult>, OutgoingInput> =
     onIsInstance(SafeTool.Result.Failure::class).transformed { it as SafeTool.Result.Failure<TResult> }
@@ -83,8 +78,7 @@ public inline infix fun <IncomingOutput, OutgoingInput, reified TResult : ToolRe
  * @param block A function that evaluates whether to accept a tool call message
  */
 @EdgeTransformationDslMarker
-public infix fun <IncomingOutput, IntermediateOutput, OutgoingInput>
-        AIAgentEdgeBuilderIntermediate<IncomingOutput, IntermediateOutput, OutgoingInput>.onToolCall(
+public infix fun <IncomingOutput, IntermediateOutput, OutgoingInput> AIAgentEdgeBuilderIntermediate<IncomingOutput, IntermediateOutput, OutgoingInput>.onToolCall(
     block: suspend (Message.Tool.Call) -> Boolean
 ): AIAgentEdgeBuilderIntermediate<IncomingOutput, Message.Tool.Call, OutgoingInput> {
     return onIsInstance(Message.Tool.Call::class)
@@ -98,15 +92,20 @@ public infix fun <IncomingOutput, IntermediateOutput, OutgoingInput>
  * @param block A function that evaluates the tool arguments to determine if the edge should accept the message
  */
 @EdgeTransformationDslMarker
-public inline fun <IncomingOutput, IntermediateOutput, OutgoingInput, reified Args : ToolArgs>
-        AIAgentEdgeBuilderIntermediate<IncomingOutput, IntermediateOutput, OutgoingInput>.onToolCall(
+public inline fun <IncomingOutput, IntermediateOutput, OutgoingInput, reified Args> AIAgentEdgeBuilderIntermediate<IncomingOutput, IntermediateOutput, OutgoingInput>.onToolCall(
     tool: Tool<Args, *>,
     crossinline block: suspend (Args) -> Boolean
 ): AIAgentEdgeBuilderIntermediate<IncomingOutput, Message.Tool.Call, OutgoingInput> {
     return onIsInstance(Message.Tool.Call::class)
         .onCondition { it.tool == tool.name }
         .onCondition { toolCall ->
-            val args = tool.decodeArgs(toolCall.contentJson)
+            val args = try {
+                tool.decodeArgs(toolCall.contentJsonResult.getOrNull() ?: return@onCondition false)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                return@onCondition false
+            }
             block(args)
         }
 }
@@ -117,8 +116,7 @@ public inline fun <IncomingOutput, IntermediateOutput, OutgoingInput, reified Ar
  * @param tool The tool to match against
  */
 @EdgeTransformationDslMarker
-public infix fun <IncomingOutput, IntermediateOutput, OutgoingInput>
-        AIAgentEdgeBuilderIntermediate<IncomingOutput, IntermediateOutput, OutgoingInput>.onToolCall(
+public infix fun <IncomingOutput, IntermediateOutput, OutgoingInput> AIAgentEdgeBuilderIntermediate<IncomingOutput, IntermediateOutput, OutgoingInput>.onToolCall(
     tool: Tool<*, *>,
 ): AIAgentEdgeBuilderIntermediate<IncomingOutput, Message.Tool.Call, OutgoingInput> {
     return onIsInstance(Message.Tool.Call::class)
@@ -133,8 +131,7 @@ public infix fun <IncomingOutput, IntermediateOutput, OutgoingInput>
  * @param tool The tool to match against
  */
 @EdgeTransformationDslMarker
-public infix fun <IncomingOutput, IntermediateOutput, OutgoingInput>
-        AIAgentEdgeBuilderIntermediate<IncomingOutput, IntermediateOutput, OutgoingInput>.onToolNotCalled(
+public infix fun <IncomingOutput, IntermediateOutput, OutgoingInput> AIAgentEdgeBuilderIntermediate<IncomingOutput, IntermediateOutput, OutgoingInput>.onToolNotCalled(
     tool: Tool<*, *>,
 ): AIAgentEdgeBuilderIntermediate<IncomingOutput, Message.Tool.Call, OutgoingInput> {
     return onIsInstance(Message.Tool.Call::class)
@@ -150,14 +147,13 @@ public infix fun <IncomingOutput, IntermediateOutput, OutgoingInput>
  * @param block A function that evaluates the tool result to determine if the edge should accept the message
  */
 @EdgeTransformationDslMarker
-public inline fun <IncomingOutput, IntermediateOutput, OutgoingInput, reified Result : ToolResult>
-        AIAgentEdgeBuilderIntermediate<IncomingOutput, IntermediateOutput, OutgoingInput>.onToolResult(
+public inline fun <IncomingOutput, IntermediateOutput, OutgoingInput, reified Result> AIAgentEdgeBuilderIntermediate<IncomingOutput, IntermediateOutput, OutgoingInput>.onToolResult(
     tool: Tool<*, Result>,
     crossinline block: suspend (SafeTool.Result<Result>) -> Boolean
 ): AIAgentEdgeBuilderIntermediate<IncomingOutput, ReceivedToolResult, OutgoingInput> {
     return onIsInstance(ReceivedToolResult::class)
         .onCondition { toolResult ->
-            (toolResult.tool == tool.name) && block(toolResult.toSafeResult())
+            (toolResult.tool == tool.name) && block(toolResult.toSafeResult(tool))
         }
 }
 
@@ -167,15 +163,13 @@ public inline fun <IncomingOutput, IntermediateOutput, OutgoingInput, reified Re
  * @param block A function that evaluates whether to accept a list of tool call messages
  */
 @EdgeTransformationDslMarker
-public infix fun <IncomingOutput, OutgoingInput>
-        AIAgentEdgeBuilderIntermediate<IncomingOutput, List<Message.Response>, OutgoingInput>.onMultipleToolCalls(
+public infix fun <IncomingOutput, OutgoingInput> AIAgentEdgeBuilderIntermediate<IncomingOutput, List<Message.Response>, OutgoingInput>.onMultipleToolCalls(
     block: suspend (List<Message.Tool.Call>) -> Boolean
 ): AIAgentEdgeBuilderIntermediate<IncomingOutput, List<Message.Tool.Call>, OutgoingInput> {
     return onIsInstance(List::class)
-        .transformed { it to it.filterIsInstance<Message.Tool.Call>() }
+        .transformed { it.filterIsInstance<Message.Tool.Call>() }
         // skipping this edge in case we have list of only assistant messages
-        .onCondition { (_, filtered) -> filtered.any() }
-        .transformed { (_, filtered) -> filtered }
+        .onCondition { it.isNotEmpty() }
         .onCondition { toolCalls -> block(toolCalls) }
 }
 
@@ -186,14 +180,12 @@ public infix fun <IncomingOutput, OutgoingInput>
  */
 @Suppress("unused")
 @EdgeTransformationDslMarker
-public infix fun <IncomingOutput, IntermediateOutput, OutgoingInput>
-        AIAgentEdgeBuilderIntermediate<IncomingOutput, IntermediateOutput, OutgoingInput>.onMultipleToolResults(
+public infix fun <IncomingOutput, IntermediateOutput, OutgoingInput> AIAgentEdgeBuilderIntermediate<IncomingOutput, IntermediateOutput, OutgoingInput>.onMultipleToolResults(
     block: suspend (List<ReceivedToolResult>) -> Boolean
 ): AIAgentEdgeBuilderIntermediate<IncomingOutput, List<ReceivedToolResult>, OutgoingInput> {
     return onIsInstance(List::class)
-        .transformed { it to it.filterIsInstance<ReceivedToolResult>() }
-        .onCondition { (original, filtered) -> original == filtered }
-        .transformed { (_, filtered) -> filtered }
+        .transformed { it.filterIsInstance<ReceivedToolResult>() }
+        .onCondition { it.isNotEmpty() }
         .onCondition { toolResults -> block(toolResults) }
 }
 
@@ -203,8 +195,7 @@ public infix fun <IncomingOutput, IntermediateOutput, OutgoingInput>
  * @param block A function that evaluates whether to accept an assistant message
  */
 @EdgeTransformationDslMarker
-public infix fun <IncomingOutput, IntermediateOutput, OutgoingInput>
-        AIAgentEdgeBuilderIntermediate<IncomingOutput, IntermediateOutput, OutgoingInput>.onAssistantMessage(
+public infix fun <IncomingOutput, IntermediateOutput, OutgoingInput> AIAgentEdgeBuilderIntermediate<IncomingOutput, IntermediateOutput, OutgoingInput>.onAssistantMessage(
     block: suspend (Message.Assistant) -> Boolean
 ): AIAgentEdgeBuilderIntermediate<IncomingOutput, String, OutgoingInput> {
     return onIsInstance(Message.Assistant::class)
@@ -212,6 +203,18 @@ public infix fun <IncomingOutput, IntermediateOutput, OutgoingInput>
         .transformed { it.content }
 }
 
+/**
+ * Creates an edge that filters a reasoning message based on a custom condition
+ *
+ * @param block A function that evaluates whether to accept a reasoning message
+ */
+@EdgeTransformationDslMarker
+public infix fun <IncomingOutput, IntermediateOutput, OutgoingInput> AIAgentEdgeBuilderIntermediate<IncomingOutput, IntermediateOutput, OutgoingInput>.onReasoningMessage(
+    block: suspend (Message.Reasoning) -> Boolean
+): AIAgentEdgeBuilderIntermediate<IncomingOutput, Message.Reasoning, OutgoingInput> {
+    return onIsInstance(Message.Reasoning::class)
+        .onCondition { signature -> block(signature) }
+}
 
 /**
  * Creates an edge that filters assistant messages based on a custom condition and extracts their content.
@@ -219,16 +222,27 @@ public infix fun <IncomingOutput, IntermediateOutput, OutgoingInput>
  * @param block A function that evaluates whether to accept an assistant message
  */
 @EdgeTransformationDslMarker
-public infix fun <IncomingOutput, OutgoingInput>
-        AIAgentEdgeBuilderIntermediate<IncomingOutput, List<Message.Response>, OutgoingInput>.onMultipleAssistantMessages(
+public infix fun <IncomingOutput, OutgoingInput> AIAgentEdgeBuilderIntermediate<IncomingOutput, List<Message.Response>, OutgoingInput>.onMultipleAssistantMessages(
     block: suspend (List<Message.Assistant>) -> Boolean
 ): AIAgentEdgeBuilderIntermediate<IncomingOutput, List<Message.Assistant>, OutgoingInput> {
     return onIsInstance(List::class)
-        .transformed { it to it.filterIsInstance<Message.Assistant>() }
-        .onCondition { (original, filtered) -> original == filtered }
-        .transformed { (_, filtered) -> filtered }
-        .onCondition { toolResults -> block(toolResults) }
-        .transformed { it }
+        .transformed { it.filterIsInstance<Message.Assistant>() }
+        .onCondition { it.isNotEmpty() }
+        .onCondition { messages -> block(messages) }
+}
+
+/**
+ * Creates an edge that filters lists of reasoning messages based on a custom condition.
+ *
+ * @param block A function that evaluates whether to accept a list of reasoning messages
+ */
+public infix fun <IncomingOutput, OutgoingInput> AIAgentEdgeBuilderIntermediate<IncomingOutput, List<Message.Response>, OutgoingInput>.onMultipleReasoningMessages(
+    block: suspend (List<Message.Reasoning>) -> Boolean
+): AIAgentEdgeBuilderIntermediate<IncomingOutput, List<Message.Reasoning>, OutgoingInput> {
+    return onIsInstance(List::class)
+        .transformed { it.filterIsInstance<Message.Reasoning>() }
+        .onCondition { it.isNotEmpty() }
+        .onCondition { messages -> block(messages) }
 }
 
 /**
@@ -237,14 +251,13 @@ public infix fun <IncomingOutput, OutgoingInput>
  * @param block A function that evaluates whether to accept an assistant message with media
  */
 @EdgeTransformationDslMarker
-public infix fun <IncomingOutput, IntermediateOutput, OutgoingInput>
-        AIAgentEdgeBuilderIntermediate<IncomingOutput, IntermediateOutput, OutgoingInput>.onAssistantMessageWithMedia(
+public infix fun <IncomingOutput, IntermediateOutput, OutgoingInput> AIAgentEdgeBuilderIntermediate<IncomingOutput, IntermediateOutput, OutgoingInput>.onAssistantMessageWithMedia(
     block: suspend (Message.Assistant) -> Boolean
-): AIAgentEdgeBuilderIntermediate<IncomingOutput, Attachment, OutgoingInput> {
+): AIAgentEdgeBuilderIntermediate<IncomingOutput, List<ContentPart.Attachment>, OutgoingInput> {
     return onIsInstance(Message.Assistant::class)
         .onCondition {
-            it.attachments.isNotEmpty()
+            it.hasAttachments()
         }
         .onCondition { signature -> block(signature) }
-        .transformed { it.attachments.single() }
+        .transformed { it.parts.filterIsInstance<ContentPart.Attachment>() }
 }

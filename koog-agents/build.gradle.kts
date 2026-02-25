@@ -1,4 +1,5 @@
 import ai.koog.gradle.publish.maven.Publishing.publishToMaven
+import ai.koog.gradle.xcframework.XCFrameworkConfig.configureFrameworkExportsIfRequested
 
 group = rootProject.group
 version = rootProject.version
@@ -9,16 +10,39 @@ plugins {
 
 val excluded = setOf(
     ":agents:agents-test",
-    ":examples",
+    ":agents:agents-ext",
+    ":agents:agents-features:agents-features-sql", // Optional SQL persistence provider
+    ":agents:agents-mcp-server",
     ":integration-tests",
+    ":test-utils",
     ":koog-spring-boot-starter",
+    ":koog-ktor",
+    ":docs",
+
+    ":a2a:a2a-core",
+    ":a2a:a2a-server",
+    ":a2a:a2a-client",
+    ":a2a:a2a-transport:a2a-transport-core-jsonrpc",
+    ":a2a:a2a-transport:a2a-transport-server-jsonrpc-http",
+    ":a2a:a2a-transport:a2a-transport-client-jsonrpc-http",
+    ":a2a:a2a-test",
+    ":a2a:test-tck:a2a-test-server-tck",
+
+    ":agents:agents-features:agents-features-a2a-core",
+    ":agents:agents-features:agents-features-a2a-server",
+    ":agents:agents-features:agents-features-a2a-client",
+
+    ":agents:agents-features:agents-features-acp",
+
+    ":http-client:http-client-test",
+    ":http-client:http-client-okhttp",
+    ":http-client:http-client-java",
+
     project.path, // the current project should not depend on itself
 )
 
 val included = setOf(
     ":agents:agents-core",
-    ":agents:agents-ext",
-    ":agents:agents-features:agents-features-common",
     ":agents:agents-features:agents-features-event-handler",
     ":agents:agents-features:agents-features-memory",
     ":agents:agents-features:agents-features-opentelemetry",
@@ -26,6 +50,7 @@ val included = setOf(
     ":agents:agents-features:agents-features-tokenizer",
     ":agents:agents-features:agents-features-snapshot",
     ":agents:agents-mcp",
+    ":agents:agents-mcp-metadata",
     ":agents:agents-tools",
     ":agents:agents-utils",
     ":embeddings:embeddings-base",
@@ -36,44 +61,57 @@ val included = setOf(
     ":prompt:prompt-executor:prompt-executor-cached",
     ":prompt:prompt-executor:prompt-executor-clients",
     ":prompt:prompt-executor:prompt-executor-clients:prompt-executor-anthropic-client",
-    ":prompt:prompt-executor:prompt-executor-clients:prompt-executor-google-client",
-    ":prompt:prompt-executor:prompt-executor-clients:prompt-executor-openai-client",
-    ":prompt:prompt-executor:prompt-executor-clients:prompt-executor-openrouter-client",
-    ":prompt:prompt-executor:prompt-executor-clients:prompt-executor-ollama-client",
     ":prompt:prompt-executor:prompt-executor-clients:prompt-executor-bedrock-client",
+    ":prompt:prompt-executor:prompt-executor-clients:prompt-executor-deepseek-client",
+    ":prompt:prompt-executor:prompt-executor-clients:prompt-executor-google-client",
+    ":prompt:prompt-executor:prompt-executor-clients:prompt-executor-mistralai-client",
+    ":prompt:prompt-executor:prompt-executor-clients:prompt-executor-ollama-client",
+    ":prompt:prompt-executor:prompt-executor-clients:prompt-executor-openai-client",
+    ":prompt:prompt-executor:prompt-executor-clients:prompt-executor-openai-client-base",
+    ":prompt:prompt-executor:prompt-executor-clients:prompt-executor-openrouter-client",
+    ":prompt:prompt-executor:prompt-executor-clients:prompt-executor-dashscope-client",
     ":prompt:prompt-executor:prompt-executor-llms",
     ":prompt:prompt-executor:prompt-executor-llms-all",
     ":prompt:prompt-executor:prompt-executor-model",
     ":prompt:prompt-llm",
     ":prompt:prompt-markdown",
     ":prompt:prompt-model",
+    ":prompt:prompt-processor",
     ":prompt:prompt-structure",
     ":prompt:prompt-tokenizer",
     ":prompt:prompt-xml",
     ":rag:rag-base",
-    ":rag:vector-storage"
+    ":rag:vector-storage",
+    ":http-client:http-client-core",
+    ":http-client:http-client-ktor",
+    ":utils",
 )
 
 kotlin {
+    val projects = rootProject.subprojects
+        .filterNot { it.path in excluded }
+        .filter { it.buildFile.exists() }
+    val projectsPaths = projects.mapTo(sortedSetOf()) { it.path }
+
+    configureFrameworkExportsIfRequested(project, projectsPaths)
+
     sourceSets {
         commonMain {
             dependencies {
-                val projects = rootProject.subprojects
-                    .filterNot { it.path in excluded }
-                    .filter { it.buildFile.exists() }
-
-                val projectsPaths = projects.mapTo(sortedSetOf()) { it.path }
 
                 val obsoleteIncluded = included - projectsPaths
                 require(obsoleteIncluded.isEmpty()) {
-                    "There are obsolete modules that are used for '${project.name}' main jar dependencies but no longer exist, please remove them from 'included' in ${project.name}/build.gradle.kts:\n" +
-                            obsoleteIncluded.joinToString(",\n") { "\"$it\"" }
+                    "There are obsolete modules that are used for '${project.name}' main jar dependencies" +
+                        "but no longer exist," +
+                        "please remove them from 'included' in ${project.name}/build.gradle.kts:\n" +
+                        obsoleteIncluded.joinToString(",\n") { "\"$it\"" }
                 }
 
                 val notIncluded = projectsPaths - included
                 require(notIncluded.isEmpty()) {
-                    "There are modules that are not listed for '${project.name}' main jar dependencies, please add them to 'included' or 'excluded' in ${project.name}/build.gradle.kts:\n" +
-                            notIncluded.joinToString(",\n") { "\"$it\"" }
+                    "There are modules that are not listed for '${project.name}' main jar dependencies, " +
+                        "please add them to 'included' or 'excluded' in ${project.name}/build.gradle.kts:\n" +
+                        notIncluded.joinToString(",\n") { "\"$it\"" }
                 }
 
                 projects.forEach {
@@ -92,6 +130,26 @@ kotlin {
                     api(project(it.path))
                 }
             }
+        }
+
+        androidMain.dependencies {
+            api(libs.ktor.client.okhttp)
+        }
+
+        jvmMain.dependencies {
+            api(libs.ktor.client.apache5)
+        }
+
+        appleMain.dependencies {
+            api(libs.ktor.client.darwin)
+        }
+
+        jsMain.dependencies {
+            api(libs.ktor.client.js)
+        }
+
+        wasmJsMain.dependencies {
+            api(libs.ktor.client.js)
         }
     }
 }

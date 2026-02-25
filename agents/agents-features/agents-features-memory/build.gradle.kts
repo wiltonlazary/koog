@@ -13,7 +13,6 @@ kotlin {
         commonMain {
             dependencies {
                 api(project(":agents:agents-core"))
-                api(project(":agents:agents-features:agents-features-common"))
                 api(project(":prompt:prompt-markdown"))
                 api(project(":rag:rag-base"))
 
@@ -30,17 +29,12 @@ kotlin {
             }
         }
 
-        jvmMain {
-            dependencies {
-                api(libs.ktor.client.cio)
-            }
-        }
-
         jvmTest {
             dependencies {
                 implementation(kotlin("test-junit5"))
                 implementation(project(":agents:agents-test"))
                 implementation(libs.mockk)
+                implementation(libs.ktor.client.cio)
             }
         }
     }

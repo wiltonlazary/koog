@@ -1,27 +1,31 @@
 package ai.koog.prompt.executor.clients.openrouter
 
 import ai.koog.prompt.executor.clients.LLModelDefinitions
-import ai.koog.prompt.executor.clients.anthropic.AnthropicModels
-import ai.koog.prompt.executor.clients.google.GoogleModels
 import ai.koog.prompt.llm.LLMCapability
 import ai.koog.prompt.llm.LLMProvider
 import ai.koog.prompt.llm.LLModel
+import kotlin.jvm.JvmField
 
 /**
  * OpenRouter models
  * Models available through the OpenRouter API
  */
-public object OpenRouterModels: LLModelDefinitions {
+public object OpenRouterModels : LLModelDefinitions {
+    /**
+     * Standard capabilities available for most OpenRouter models.
+     * Includes temperature control, JSON schema support, speculation, tools, and completion.
+     */
     private val standardCapabilities: List<LLMCapability> = listOf(
         LLMCapability.Temperature,
-        LLMCapability.Schema.JSON.Full,
         LLMCapability.Speculation,
         LLMCapability.Tools,
-        LLMCapability.ToolChoice,
-        LLMCapability.Completion
+        LLMCapability.Completion,
     )
 
-    // Multimodal capabilities (including vision)
+    /**
+     * Multimodal capabilities including vision support.
+     * Extends standard capabilities with image vision processing.
+     */
     private val multimodalCapabilities: List<LLMCapability> = standardCapabilities + LLMCapability.Vision.Image
 
     /**
@@ -29,6 +33,7 @@ public object OpenRouterModels: LLModelDefinitions {
      *
      * @see <a href="https://huggingface.co/microsoft/Phi-4-reasoning">
      */
+    @JvmField
     public val Phi4Reasoning: LLModel = LLModel(
         provider = LLMProvider.OpenRouter,
         id = "microsoft/phi-4-reasoning:free",
@@ -42,10 +47,13 @@ public object OpenRouterModels: LLModelDefinitions {
      * Claude 3 Opus is designed to support various advanced language model tasks enabled by its multimodal features,
      * and is suitable for integration through systems compatible with the OpenRouter provider.
      */
-    public val Claude3Opus: LLModel = AnthropicModels.Opus_3.copy(
+    @JvmField
+    public val Claude3Opus: LLModel = LLModel(
         provider = LLMProvider.OpenRouter,
         id = "anthropic/claude-3-opus",
         capabilities = multimodalCapabilities,
+        contextLength = 200_000,
+        maxOutputTokens = 4_096,
     )
 
     /**
@@ -54,6 +62,7 @@ public object OpenRouterModels: LLModelDefinitions {
      * This variable defines an instance of the `LLModel` class using the `OpenRouter` provider.
      * The model is identified with the ID "anthropic/claude-3-sonnet" and supports multimodal capabilities.
      */
+    @JvmField
     public val Claude3Sonnet: LLModel = LLModel(
         provider = LLMProvider.OpenRouter,
         id = "anthropic/claude-3-sonnet",
@@ -68,10 +77,219 @@ public object OpenRouterModels: LLModelDefinitions {
      * This model is designed to handle multimodal capabilities and is identified by the
      * ID "anthropic/claude-3-haiku". It uses the OpenRouter provider as its delivery system.
      */
-    public val Claude3Haiku: LLModel = AnthropicModels.Haiku_3.copy(
+    @JvmField
+    public val Claude3Haiku: LLModel = LLModel(
         provider = LLMProvider.OpenRouter,
         id = "anthropic/claude-3-haiku",
         capabilities = multimodalCapabilities,
+        contextLength = 200_000,
+        maxOutputTokens = 4_096,
+    )
+
+    /**
+     * Claude 3.5 Sonnet model with enhanced capabilities and larger output token limit.
+     * Supports multimodal inputs including text and vision.
+     */
+    @JvmField
+    public val Claude3_5Sonnet: LLModel = LLModel(
+        provider = LLMProvider.OpenRouter,
+        id = "anthropic/claude-3.5-sonnet",
+        capabilities = multimodalCapabilities,
+        contextLength = 200_000,
+        maxOutputTokens = 8_200,
+    )
+
+    /**
+     * Claude 3.7 Sonnet model with significantly expanded output capacity.
+     * Features advanced multimodal capabilities and large context window.
+     */
+    @JvmField
+    public val Claude3_7Sonnet: LLModel = LLModel(
+        provider = LLMProvider.OpenRouter,
+        id = "anthropic/claude-3.7-sonnet",
+        capabilities = multimodalCapabilities,
+        contextLength = 200_000,
+        maxOutputTokens = 64_000,
+    )
+
+    /**
+     * Claude 4 Sonnet model representing the latest generation of Anthropic's models.
+     * Offers enhanced performance with multimodal support and extensive output capacity.
+     */
+    @JvmField
+    public val Claude4Sonnet: LLModel = LLModel(
+        provider = LLMProvider.OpenRouter,
+        id = "anthropic/claude-sonnet-4",
+        capabilities = multimodalCapabilities,
+        contextLength = 200_000,
+        maxOutputTokens = 64_000,
+    )
+
+    /**
+     * Claude 4.1 Opus model, the premium tier offering advanced reasoning capabilities.
+     * Designed for complex tasks requiring sophisticated multimodal understanding.
+     */
+    @JvmField
+    public val Claude4_1Opus: LLModel = LLModel(
+        provider = LLMProvider.OpenRouter,
+        id = "anthropic/claude-opus-4.1",
+        capabilities = multimodalCapabilities,
+        contextLength = 200_000,
+        maxOutputTokens = 32_000,
+    )
+
+    /**
+     * Claude Haiku 4.5 is Anthropic’s fastest and most efficient model,
+     * delivering near-frontier intelligence at a fraction of the cost and latency of larger Claude models.
+     */
+    @JvmField
+    public val Claude4_5Haiku: LLModel = LLModel(
+        provider = LLMProvider.OpenRouter,
+        id = "anthropic/claude-haiku-4.5",
+        capabilities = multimodalCapabilities + listOf(
+            LLMCapability.Schema.JSON.Standard,
+            LLMCapability.ToolChoice
+        ),
+        contextLength = 200_000,
+        maxOutputTokens = 64_000,
+    )
+
+    /**
+     * Claude Sonnet 4.5 is Anthropic’s most advanced Sonnet model to date, optimized for real-world agents
+     * and coding workflows.
+     */
+    @JvmField
+    public val Claude4_5Sonnet: LLModel = LLModel(
+        provider = LLMProvider.OpenRouter,
+        id = "anthropic/claude-sonnet-4.5",
+        capabilities = multimodalCapabilities + listOf(
+            LLMCapability.Schema.JSON.Standard,
+            LLMCapability.ToolChoice
+        ),
+        contextLength = 1_000_000,
+        maxOutputTokens = 64_000,
+    )
+
+    /**
+     * Claude Opus 4.5 is Anthropic’s frontier reasoning model optimized for complex software engineering,
+     * agentic workflows, and long-horizon computer use.
+     */
+    @JvmField
+    public val Claude4_5Opus: LLModel = LLModel(
+        provider = LLMProvider.OpenRouter,
+        id = "anthropic/claude-opus-4.5",
+        capabilities = multimodalCapabilities + listOf(
+            LLMCapability.Schema.JSON.Standard,
+            LLMCapability.ToolChoice
+        ),
+        contextLength = 200_000,
+        maxOutputTokens = 32_000,
+    )
+
+    /**
+     * Represents the GPT-4o-mini model hosted on OpenRouter.
+     *
+     * It leverages a standard set of capabilities for interaction.
+     */
+    @JvmField
+    public val GPT4oMini: LLModel = LLModel(
+        provider = LLMProvider.OpenRouter,
+        id = "openai/gpt-4o-mini",
+        capabilities = multimodalCapabilities + listOf(
+            LLMCapability.Schema.JSON.Standard,
+            LLMCapability.ToolChoice
+        ),
+        contextLength = 128_000,
+        maxOutputTokens = 16_400,
+    )
+
+    /**
+     * Represents the GPT-5 Chat model hosted on OpenRouter.
+     *
+     * It leverages a set of multimodal capabilities for interaction.
+     */
+    @JvmField
+    public val GPT5Chat: LLModel = LLModel(
+        provider = LLMProvider.OpenRouter,
+        id = "openai/gpt-5-chat",
+        capabilities = multimodalCapabilities + listOf(
+            LLMCapability.Schema.JSON.Standard,
+            LLMCapability.ToolChoice
+        ),
+        contextLength = 400_000,
+        maxOutputTokens = 128_000,
+    )
+
+    /**
+     * Represents the GPT-5 model hosted on OpenRouter.
+     *
+     * This variable defines an instance of the `LLModel` type,
+     * specifying the OpenRouter provider and using the identifier `"openai/gpt-5"`.
+     * It leverages a standard set of capabilities for interaction.
+     */
+    @JvmField
+    public val GPT5: LLModel = LLModel(
+        provider = LLMProvider.OpenRouter,
+        id = "openai/gpt-5",
+        capabilities = standardCapabilities + listOf(
+            LLMCapability.Schema.JSON.Standard,
+            LLMCapability.ToolChoice
+        ),
+        contextLength = 400_000,
+    )
+
+    /**
+     * Represents the GPT-5 Mini model hosted on OpenRouter.
+     *
+     * This variable defines an instance of the `LLModel` type,
+     * specifying the OpenRouter provider and using the identifier `"openai/gpt-5-mini"`.
+     * It leverages a standard set of capabilities for interaction.
+     */
+    @JvmField
+    public val GPT5Mini: LLModel = LLModel(
+        provider = LLMProvider.OpenRouter,
+        id = "openai/gpt-5-mini",
+        capabilities = standardCapabilities + listOf(
+            LLMCapability.Schema.JSON.Standard,
+            LLMCapability.ToolChoice
+        ),
+        contextLength = 400_000,
+    )
+
+    /**
+     * Represents the GPT-5 Nano model hosted on OpenRouter.
+     *
+     * This variable defines an instance of the `LLModel` type,
+     * specifying the OpenRouter provider and using the identifier `"openai/gpt-5-nano"`.
+     * It leverages a standard set of capabilities for interaction.
+     */
+    @JvmField
+    public val GPT5Nano: LLModel = LLModel(
+        provider = LLMProvider.OpenRouter,
+        id = "openai/gpt-5-nano",
+        capabilities = standardCapabilities + listOf(
+            LLMCapability.Schema.JSON.Standard,
+            LLMCapability.ToolChoice
+        ),
+        contextLength = 400_000,
+    )
+
+    /**
+     * Represents the gpt-oss-120b model hosted on OpenRouter.
+     *
+     * This variable defines an instance of the `LLModel` type,
+     * specifying the OpenRouter provider and using the identifier `"openai/gpt-oss-120b"`.
+     * It leverages a standard set of capabilities for interaction.
+     */
+    @JvmField
+    public val GPT_OSS_120b: LLModel = LLModel(
+        provider = LLMProvider.OpenRouter,
+        id = "openai/gpt-oss-120b",
+        capabilities = standardCapabilities + listOf(
+            LLMCapability.Schema.JSON.Standard,
+            LLMCapability.ToolChoice
+        ),
+        contextLength = 400_000,
     )
 
     /**
@@ -81,10 +299,14 @@ public object OpenRouterModels: LLModelDefinitions {
      * specifying the OpenRouter provider and using the identifier `"openai/gpt-4"`.
      * It leverages a standard set of capabilities for interaction.
      */
+    @JvmField
     public val GPT4: LLModel = LLModel(
         provider = LLMProvider.OpenRouter,
         id = "openai/gpt-4",
-        capabilities = standardCapabilities,
+        capabilities = standardCapabilities + listOf(
+            LLMCapability.Schema.JSON.Standard,
+            LLMCapability.ToolChoice
+        ),
         contextLength = 32_768,
     )
 
@@ -92,10 +314,14 @@ public object OpenRouterModels: LLModelDefinitions {
      * GPT4o represents an instance of the GPT-4 model obtained via the OpenRouter provider.
      * It is pre-configured with the specified identifier and capabilities.
      */
+    @JvmField
     public val GPT4o: LLModel = LLModel(
         provider = LLMProvider.OpenRouter,
         id = "openai/gpt-4o",
-        capabilities = multimodalCapabilities,
+        capabilities = multimodalCapabilities + listOf(
+            LLMCapability.Schema.JSON.Standard,
+            LLMCapability.ToolChoice
+        ),
         contextLength = 128_000,
     )
 
@@ -106,10 +332,14 @@ public object OpenRouterModels: LLModelDefinitions {
      * `openai/gpt-4-turbo`. It supports multimodal capabilities, making it suitable for
      * a range of advanced generative tasks such as text processing and creation.
      */
+    @JvmField
     public val GPT4Turbo: LLModel = LLModel(
         provider = LLMProvider.OpenRouter,
         id = "openai/gpt-4-turbo",
-        capabilities = multimodalCapabilities,
+        capabilities = multimodalCapabilities + listOf(
+            LLMCapability.Schema.JSON.Standard,
+            LLMCapability.ToolChoice
+        ),
         contextLength = 128_000,
     )
 
@@ -119,35 +349,44 @@ public object OpenRouterModels: LLModelDefinitions {
      * GPT-3.5-Turbo is a powerful, general-purpose large language model capable of tasks
      * such as natural language understanding, text generation, summarization, and more.
      */
+    @JvmField
     public val GPT35Turbo: LLModel = LLModel(
         provider = LLMProvider.OpenRouter,
         id = "openai/gpt-3.5-turbo",
-        capabilities = standardCapabilities,
+        capabilities = standardCapabilities + listOf(
+            LLMCapability.Schema.JSON.Standard,
+            LLMCapability.ToolChoice
+        ),
         contextLength = 16_385,
     )
 
     /**
-     * Represents the Google Gemini 1.5 Pro language model accessed through the OpenRouter provider.
-     *
-     * This model supports multimodal capabilities, which enable handling multiple types of input or tasks.
-     * It is identified by the `google/gemini-1.5-pro` model ID within the OpenRouter ecosystem.
+     * GPT-5.2 is offering stronger agentic and long context performance compared to GPT-5.1.
+     * It uses adaptive reasoning to allocate computation dynamically, responding quickly to simple queries
+     * while spending more depth on complex tasks.
      */
-    public val Gemini15Pro: LLModel = GoogleModels.Gemini1_5Pro.copy(
+    @JvmField
+    public val GPT5_2: LLModel = LLModel(
         provider = LLMProvider.OpenRouter,
-        id = "google/gemini-1.5-pro",
-        capabilities = multimodalCapabilities,
+        id = "openai/gpt-5.2",
+        capabilities = multimodalCapabilities + listOf(
+            LLMCapability.Schema.JSON.Standard,
+            LLMCapability.ToolChoice
+        ),
+        contextLength = 400_000,
     )
 
     /**
-     * Represents the Gemini 1.5 Flash language model provided via the OpenRouter platform.
-     *
-     * This language model is identified by its unique `id` and supports multimodal capabilities,
-     * enabling it to handle various modes of input and output effectively.
+     * GPT-5.2 Pro is offering major improvements in agentic coding and long context performance over GPT-5 Pro.
+     * It is optimized for complex tasks that require step-by-step reasoning, instruction following,
+     * and accuracy in high-stakes use cases.
      */
-    public val Gemini15Flash: LLModel = GoogleModels.Gemini1_5Flash.copy(
+    @JvmField
+    public val GPT5_2Pro: LLModel = LLModel(
         provider = LLMProvider.OpenRouter,
-        id = "google/gemini-1.5-flash",
-        capabilities = multimodalCapabilities,
+        id = "openai/gpt-5.2-pro",
+        capabilities = multimodalCapabilities + LLMCapability.ToolChoice,
+        contextLength = 400_000,
     )
 
     /**
@@ -157,10 +396,14 @@ public object OpenRouterModels: LLModelDefinitions {
      *
      * @see <a href="https://huggingface.co/meta-llama/Meta-Llama-3-70B">
      */
+    @JvmField
     public val Llama3: LLModel = LLModel(
         provider = LLMProvider.OpenRouter,
         id = "meta/llama-3-70b",
-        capabilities = standardCapabilities,
+        capabilities = standardCapabilities + listOf(
+            LLMCapability.Schema.JSON.Standard,
+            LLMCapability.ToolChoice
+        ),
         contextLength = 8_000,
     )
 
@@ -170,10 +413,14 @@ public object OpenRouterModels: LLModelDefinitions {
      *
      * @see <a href="https://huggingface.co/meta-llama/Meta-Llama-3-70B-Instruct">
      */
+    @JvmField
     public val Llama3Instruct: LLModel = LLModel(
         provider = LLMProvider.OpenRouter,
         id = "meta/llama-3-70b-instruct",
-        capabilities = standardCapabilities,
+        capabilities = standardCapabilities + listOf(
+            LLMCapability.Schema.JSON.Standard,
+            LLMCapability.ToolChoice
+        ),
         contextLength = 8_000,
     )
 
@@ -185,9 +432,10 @@ public object OpenRouterModels: LLModelDefinitions {
      *
      * @see <a href="https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.3">
      */
+    @JvmField
     public val Mistral7B: LLModel = LLModel(
         provider = LLMProvider.OpenRouter,
-        id = "mistral/mistral-7b",
+        id = "mistralai/mistral-7b-instruct",
         capabilities = standardCapabilities,
         contextLength = 32_768,
     )
@@ -201,9 +449,10 @@ public object OpenRouterModels: LLModelDefinitions {
      *
      * @see <a href="https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1">
      */
+    @JvmField
     public val Mixtral8x7B: LLModel = LLModel(
         provider = LLMProvider.OpenRouter,
-        id = "mistral/mixtral-8x7b",
+        id = "mistralai/mixtral-8x7b-instruct",
         capabilities = standardCapabilities,
         contextLength = 32_768,
     )
@@ -215,6 +464,7 @@ public object OpenRouterModels: LLModelDefinitions {
      * across different modalities such as text and vision. It is identified by the unique ID
      * "anthropic/claude-3-sonnet-vision".
      */
+    @JvmField
     public val Claude3VisionSonnet: LLModel = LLModel(
         provider = LLMProvider.OpenRouter,
         id = "anthropic/claude-3-sonnet-vision",
@@ -230,10 +480,13 @@ public object OpenRouterModels: LLModelDefinitions {
      * accessible through the OpenRouter provider. Its identifier is
      * `"anthropic/claude-3-opus-vision"`, and it supports multimodal capabilities.
      */
-    public val Claude3VisionOpus: LLModel = AnthropicModels.Opus_3.copy(
+    @JvmField
+    public val Claude3VisionOpus: LLModel = LLModel(
         provider = LLMProvider.OpenRouter,
         id = "anthropic/claude-3-opus-vision",
         capabilities = multimodalCapabilities,
+        contextLength = 200_000,
+        maxOutputTokens = 4_096,
     )
 
     /**
@@ -243,9 +496,172 @@ public object OpenRouterModels: LLModelDefinitions {
      * textual and visual inputs. It utilizes the OpenRouter infrastructure to facilitate access
      * to Anthropic's Claude 3 model with vision support.
      */
-    public val Claude3VisionHaiku: LLModel = AnthropicModels.Haiku_3.copy(
+    @JvmField
+    public val Claude3VisionHaiku: LLModel = LLModel(
         provider = LLMProvider.OpenRouter,
         id = "anthropic/claude-3-haiku-vision",
         capabilities = multimodalCapabilities,
+        contextLength = 200_000,
+        maxOutputTokens = 4_096,
     )
+
+    /**
+     * DeepSeek V3 model from March 2024 release.
+     * Offers extensive context length with matching output token capacity.
+     */
+    @JvmField
+    public val DeepSeekV30324: LLModel = LLModel(
+        provider = LLMProvider.OpenRouter,
+        id = "deepseek/deepseek-chat-v3-0324",
+        capabilities = standardCapabilities,
+        contextLength = 163_800,
+        maxOutputTokens = 163_800,
+    )
+
+    /**
+     * Gemini 2.5 Flash Lite model optimized for speed and efficiency.
+     * Features multimodal capabilities with very large context window.
+     */
+    @JvmField
+    public val Gemini2_5FlashLite: LLModel = LLModel(
+        provider = LLMProvider.OpenRouter,
+        id = "google/gemini-2.5-flash-lite",
+        capabilities = multimodalCapabilities + listOf(
+            LLMCapability.Schema.JSON.Standard,
+            LLMCapability.ToolChoice
+        ),
+        contextLength = 1_048_576,
+        maxOutputTokens = 65_600,
+    )
+
+    /**
+     * Gemini 2.5 Flash model balancing performance and speed.
+     * Supports multimodal inputs with extensive context and output capacity.
+     */
+    @JvmField
+    public val Gemini2_5Flash: LLModel = LLModel(
+        provider = LLMProvider.OpenRouter,
+        id = "google/gemini-2.5-flash",
+        capabilities = multimodalCapabilities + listOf(
+            LLMCapability.Schema.JSON.Standard,
+            LLMCapability.ToolChoice
+        ),
+        contextLength = 1_048_576,
+        maxOutputTokens = 65_600,
+    )
+
+    /**
+     * Gemini 2.5 Pro model representing Google's premium offering.
+     * Provides advanced multimodal capabilities with maximum context and output limits.
+     */
+    @JvmField
+    public val Gemini2_5Pro: LLModel = LLModel(
+        provider = LLMProvider.OpenRouter,
+        id = "google/gemini-2.5-pro",
+        capabilities = multimodalCapabilities + listOf(
+            LLMCapability.Schema.JSON.Standard,
+            LLMCapability.ToolChoice
+        ),
+        contextLength = 1_048_576,
+        maxOutputTokens = 65_600,
+    )
+
+    /**
+     * Qwen 2.5 model with 72B parameters from Alibaba.
+     * Supports advanced language understanding and generation capabilities.
+     */
+    @JvmField
+    public val Qwen2_5: LLModel = LLModel(
+        provider = LLMProvider.OpenRouter,
+        id = "qwen/qwen-2.5-72b-instruct",
+        capabilities = standardCapabilities + listOf(
+            LLMCapability.ToolChoice
+        ),
+        contextLength = 131_072,
+        maxOutputTokens = 8_192,
+    )
+
+    /**
+     * Qwen 3 model with 8B parameters from Alibaba.
+     * Multimodal vision-language model from the Qwen3-VL series, built for high-fidelity understanding
+     * and reasoning across text, images, and video.
+     */
+    @JvmField
+    public val Qwen3VL: LLModel = LLModel(
+        provider = LLMProvider.OpenRouter,
+        id = "qwen/qwen3-vl-8b-instruct",
+        capabilities = multimodalCapabilities + listOf(
+            LLMCapability.ToolChoice
+        ),
+        contextLength = 131_072,
+        maxOutputTokens = 33_000,
+    )
+
+    /**
+     * List of the supported models by the OpenRouter provider.
+     */
+    private val supportedModels: List<LLModel> = listOf(
+        // Phi Models
+        Phi4Reasoning,
+
+        // Claude Models
+        Claude3Opus,
+        Claude3Sonnet,
+        Claude3Haiku,
+        Claude3_5Sonnet,
+        Claude3_7Sonnet,
+        Claude4Sonnet,
+        Claude4_1Opus,
+        Claude4_5Haiku,
+        Claude4_5Sonnet,
+        Claude4_5Opus,
+        Claude3VisionSonnet,
+        Claude3VisionOpus,
+        Claude3VisionHaiku,
+
+        // OpenAI Models
+        GPT35Turbo,
+        GPT4,
+        GPT4o,
+        GPT4oMini,
+        GPT4Turbo,
+        GPT5,
+        GPT5Mini,
+        GPT5Nano,
+        GPT5Chat,
+        GPT_OSS_120b,
+        GPT5_2,
+        GPT5_2Pro,
+        Llama3,
+        Llama3Instruct,
+
+        // Mistral Models
+        Mistral7B,
+        Mixtral8x7B,
+
+        // DeepSeek Models
+        DeepSeekV30324,
+
+        // Gemini 2.5 Models
+        Gemini2_5FlashLite,
+        Gemini2_5Flash,
+        Gemini2_5Pro,
+
+        // Qwen Models
+        Qwen2_5,
+        Qwen3VL,
+    )
+
+    /**
+     * List of custom models added to the OpenRouter provider.
+     */
+    private val customModels: MutableList<LLModel> = mutableListOf()
+
+    override val models: List<LLModel>
+        get() = supportedModels + customModels
+
+    override fun addCustomModel(model: LLModel) {
+        require(model.provider == LLMProvider.OpenRouter) { "Model provider must be OpenRouter" }
+        customModels.add(model)
+    }
 }

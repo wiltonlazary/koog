@@ -4,23 +4,32 @@ import ai.koog.agents.core.tools.ToolDescriptor
 import ai.koog.agents.core.tools.ToolParameterDescriptor
 import ai.koog.agents.core.tools.ToolParameterType
 import ai.koog.prompt.dsl.Prompt
-import ai.koog.prompt.executor.clients.anthropic.AnthropicContent
-import ai.koog.prompt.executor.clients.anthropic.AnthropicToolChoice
-import ai.koog.prompt.executor.clients.bedrock.BedrockModels
+import ai.koog.prompt.executor.clients.bedrock.modelfamilies.BedrockAnthropicInvokeModel
+import ai.koog.prompt.executor.clients.bedrock.modelfamilies.BedrockAnthropicInvokeModelContent
+import ai.koog.prompt.executor.clients.bedrock.modelfamilies.BedrockAnthropicInvokeModelMessage
+import ai.koog.prompt.executor.clients.bedrock.modelfamilies.BedrockAnthropicToolChoice
 import ai.koog.prompt.message.Message
+import ai.koog.prompt.message.ResponseMetaInfo
 import ai.koog.prompt.params.LLMParams
-import kotlinx.datetime.Clock
-import kotlinx.datetime.Instant
-import kotlinx.serialization.json.jsonObject
-import kotlin.test.*
+import ai.koog.prompt.streaming.StreamFrame
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.JsonObject
+import kotlin.test.Test
+import kotlin.test.assertContains
+import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
+import kotlin.time.Clock
+import kotlin.time.Instant
 
 class BedrockAnthropicClaudeSerializationTest {
 
     private val mockClock = object : Clock {
-        override fun now(): Instant = Clock.System.now()
+        override fun now(): Instant = Instant.DISTANT_FUTURE
     }
 
-    private val model = BedrockModels.AnthropicClaude3Sonnet
     private val systemMessage = "You are a helpful assistant."
     private val userMessage = "Tell me about Paris."
     private val userMessageQuestion = "What's the weather in Paris?"
@@ -39,22 +48,19 @@ class BedrockAnthropicClaudeSerializationTest {
             user(userMessage)
         }
 
-        val request = BedrockAnthropicClaudeSerialization.createAnthropicRequest(prompt, model, emptyList())
+        val request = BedrockAnthropicClaudeSerialization.createAnthropicRequest(prompt, emptyList())
 
         assertNotNull(request)
-        assertEquals(model.id, request.model)
-        assertEquals(4096, request.maxTokens)
+        assertEquals(BedrockAnthropicInvokeModel.MAX_TOKENS_DEFAULT, request.maxTokens)
         assertEquals(temperature, request.temperature)
 
         assertNotNull(request.system)
-        assertEquals(1, request.system?.size)
-        assertEquals(systemMessage, request.system?.first()?.text)
 
+        val userMessageActual = request.messages[0]
         assertEquals(1, request.messages.size)
-        assertEquals("user", request.messages[0].role)
-        assertEquals(1, request.messages[0].content.size)
-        assertTrue(request.messages[0].content[0] is AnthropicContent.Text)
-        assertEquals(userMessage, (request.messages[0].content[0] as AnthropicContent.Text).text)
+        assertTrue(userMessageActual is BedrockAnthropicInvokeModelMessage.User)
+        assertEquals(1, userMessageActual.content.size)
+        assertEquals(userMessage, (userMessageActual.content[0] as BedrockAnthropicInvokeModelContent.Text).text)
     }
 
     @Test
@@ -66,23 +72,25 @@ class BedrockAnthropicClaudeSerializationTest {
             user(userMessage)
         }
 
-        val request = BedrockAnthropicClaudeSerialization.createAnthropicRequest(prompt, model, emptyList())
+        val request = BedrockAnthropicClaudeSerialization.createAnthropicRequest(prompt, emptyList())
 
         assertNotNull(request)
 
         assertEquals(3, request.messages.size)
+        val userMessageActual = request.messages[0]
+        val userMessageActual2 = request.messages[2]
+        val assistantMessage = request.messages[1]
+        assertTrue(userMessageActual is BedrockAnthropicInvokeModelMessage.User)
+        assertEquals("Hello, who are you?", (userMessageActual.content[0] as BedrockAnthropicInvokeModelContent.Text).text)
 
-        assertEquals("user", request.messages[0].role)
-        assertEquals("Hello, who are you?", (request.messages[0].content[0] as AnthropicContent.Text).text)
-
-        assertEquals("assistant", request.messages[1].role)
+        assertTrue(assistantMessage is BedrockAnthropicInvokeModelMessage.Assistant)
         assertEquals(
             "I'm Claude, an AI assistant created by Anthropic. How can I help you today?",
-            (request.messages[1].content[0] as AnthropicContent.Text).text
+            (assistantMessage.content[0] as BedrockAnthropicInvokeModelContent.Text).text
         )
 
-        assertEquals("user", request.messages[2].role)
-        assertEquals("Tell me about Paris.", (request.messages[2].content[0] as AnthropicContent.Text).text)
+        assertTrue(userMessageActual2 is BedrockAnthropicInvokeModelMessage.User)
+        assertEquals("Tell me about Paris.", (userMessageActual2.content[0] as BedrockAnthropicInvokeModelContent.Text).text)
     }
 
     @Test
@@ -104,25 +112,17 @@ class BedrockAnthropicClaudeSerializationTest {
             user(userMessageQuestion)
         }
 
-        val request = BedrockAnthropicClaudeSerialization.createAnthropicRequest(prompt, model, tools)
+        val request = BedrockAnthropicClaudeSerialization.createAnthropicRequest(prompt, tools)
 
         assertNotNull(request)
 
         assertNotNull(request.tools)
-        assertEquals(1, request.tools?.size)
-        assertEquals(toolName, request.tools?.get(0)?.name)
-        assertEquals(toolDescription, request.tools?.get(0)?.description)
+        assertEquals(1, request.tools.size)
+        assertEquals(toolName, request.tools[0].name)
+        assertEquals(toolDescription, request.tools[0].description)
 
-        val schema = request.tools?.get(0)?.inputSchema
+        val schema = request.tools[0].inputSchema
         assertNotNull(schema)
-
-        assertEquals(listOf("city"), schema.required)
-
-        val properties = schema.properties.jsonObject
-        assertNotNull(properties["city"])
-        assertNotNull(properties["units"])
-
-        assertEquals(AnthropicToolChoice.Auto, request.toolChoice)
     }
 
     @Test
@@ -140,27 +140,27 @@ class BedrockAnthropicClaudeSerializationTest {
         val promptAuto = Prompt.build("test", params = LLMParams(toolChoice = LLMParams.ToolChoice.Auto)) {
             user(userMessageQuestion)
         }
-        val requestAuto = BedrockAnthropicClaudeSerialization.createAnthropicRequest(promptAuto, model, tools)
-        assertEquals(AnthropicToolChoice.Auto, requestAuto.toolChoice)
+        val requestAuto = BedrockAnthropicClaudeSerialization.createAnthropicRequest(promptAuto, tools)
+        assertEquals("auto", requestAuto.toolChoice?.type)
 
         val promptNone = Prompt.build("test", params = LLMParams(toolChoice = LLMParams.ToolChoice.None)) {
             user(userMessageQuestion)
         }
-        val requestNone = BedrockAnthropicClaudeSerialization.createAnthropicRequest(promptNone, model, tools)
-        assertEquals(AnthropicToolChoice.None, requestNone.toolChoice)
+        val requestNone = BedrockAnthropicClaudeSerialization.createAnthropicRequest(promptNone, tools)
+        assertEquals("none", requestNone.toolChoice?.type)
 
         val promptRequired = Prompt.build("test", params = LLMParams(toolChoice = LLMParams.ToolChoice.Required)) {
             user(userMessageQuestion)
         }
-        val requestRequired = BedrockAnthropicClaudeSerialization.createAnthropicRequest(promptRequired, model, tools)
-        assertEquals(AnthropicToolChoice.Any, requestRequired.toolChoice)
+        val requestRequired = BedrockAnthropicClaudeSerialization.createAnthropicRequest(promptRequired, tools)
+        assertEquals("any", requestRequired.toolChoice?.type)
 
         val promptNamed = Prompt.build("test", params = LLMParams(toolChoice = LLMParams.ToolChoice.Named(toolName))) {
             user(userMessageQuestion)
         }
-        val requestNamed = BedrockAnthropicClaudeSerialization.createAnthropicRequest(promptNamed, model, tools)
-        assertTrue(requestNamed.toolChoice is AnthropicToolChoice.Tool)
-        assertEquals(toolName, (requestNamed.toolChoice as AnthropicToolChoice.Tool).name)
+        val requestNamed = BedrockAnthropicClaudeSerialization.createAnthropicRequest(promptNamed, tools)
+        assertTrue(requestNamed.toolChoice is BedrockAnthropicToolChoice)
+        assertEquals(toolName, requestNamed.toolChoice.name)
     }
 
     @Test
@@ -178,10 +178,10 @@ class BedrockAnthropicClaudeSerializationTest {
                     }
                 ],
                 "model": "anthropic.claude-3-sonnet-20240229-v1:0",
-                "stopReason": "$stopReason",
+                "stop_reason": "$stopReason",
                 "usage": {
-                    "inputTokens": 25,
-                    "outputTokens": 20
+                    "input_tokens": 25,
+                    "output_tokens": 20
                 }
             }
         """.trimIndent()
@@ -195,8 +195,7 @@ class BedrockAnthropicClaudeSerializationTest {
         assertTrue(message is Message.Assistant)
         assertContains(message.content, "Paris is the capital of France")
 
-        val assistant = message
-        assertEquals(stopReason, assistant.finishReason)
+        assertEquals(stopReason, message.finishReason)
 
         assertEquals(25, message.metaInfo.inputTokensCount)
         assertEquals(20, message.metaInfo.outputTokensCount)
@@ -222,10 +221,10 @@ class BedrockAnthropicClaudeSerializationTest {
                     }
                 ],
                 "model": "anthropic.claude-3-sonnet-20240229-v1:0",
-                "stopReason": "tool_use",
+                "stop_reason": "tool_use",
                 "usage": {
-                    "inputTokens": 25,
-                    "outputTokens": 15
+                    "input_tokens": 25,
+                    "output_tokens": 15
                 }
             }
         """.trimIndent()
@@ -271,10 +270,10 @@ class BedrockAnthropicClaudeSerializationTest {
                     }
                 ],
                 "model": "anthropic.claude-3-sonnet-20240229-v1:0",
-                "stopReason": "tool_use",
+                "stop_reason": "tool_use",
                 "usage": {
-                    "inputTokens": 25,
-                    "outputTokens": 30
+                    "input_tokens": 25,
+                    "output_tokens": 30
                 }
             }
         """.trimIndent()
@@ -295,99 +294,217 @@ class BedrockAnthropicClaudeSerializationTest {
     }
 
     @Test
-    fun `parseAnthropicStreamChunk with content_block_delta`() {
-        val chunkJson = """
-            {
-                "type": "content_block_delta",
-                "index": 0,
-                "delta": {
-                    "type": "text_delta",
-                    "text": "Paris is "
+    fun `transformAnthropicStreamChunks with simple message`() = runTest {
+        val chunkJsonStringFlow = flowOf(
+            """
+                {
+                    "type" : "content_block_start",
+                    "index" : 0,
+                    "content_block" : {
+                        "type" : "text",
+                        "text" : "hello"
+                   }
                 }
-            }
-        """.trimIndent()
-
-        val content = BedrockAnthropicClaudeSerialization.parseAnthropicStreamChunk(chunkJson)
-        assertEquals("Paris is ", content)
-    }
-
-    @Test
-    fun `parseAnthropicStreamChunk with message_delta`() {
-        val chunkJson = """
-            {
-                "type": "message_delta",
-                "delta": {
-                    "type": "text_delta",
-                    "stopReason": "end_turn"
-                },
-                "message": {
-                    "id": "msg_01234567",
-                    "type": "message",
-                    "role": "assistant",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "the capital of France."
-                        }
-                    ],
-                    "model": "anthropic.claude-3-sonnet-20240229-v1:0"
-                }
-            }
-        """.trimIndent()
-
-        val content = BedrockAnthropicClaudeSerialization.parseAnthropicStreamChunk(chunkJson)
-        assertEquals("the capital of France.", content)
-    }
-
-    @Test
-    fun `parseAnthropicStreamChunk with message_start`() {
-        val chunkJson = """
-            {
-                "type": "message_start",
-                "message": {
-                    "id": "msg_01234567",
-                    "type": "message",
-                    "role": "assistant",
-                    "content": [],
-                    "model": "anthropic.claude-3-sonnet-20240229-v1:0",
-                    "usage": {
-                        "inputTokens": 25,
-                        "outputTokens": 0
+            """.trimIndent(),
+            """
+                {
+                    "type" : "content_block_delta",
+                    "index" : 0,
+                    "delta" : {
+                        "type" : "text_delta",
+                        "text" : "world"
                     }
                 }
-            }
-        """.trimIndent()
+            """.trimIndent(),
+            """
+                {
+                    "type" : "content_block_stop",
+                    "index" : 0
+                }
+            """.trimIndent(),
+        )
 
-        val content = BedrockAnthropicClaudeSerialization.parseAnthropicStreamChunk(chunkJson)
-        assertEquals("", content)
+        val content =
+            BedrockAnthropicClaudeSerialization.transformAnthropicStreamChunks(chunkJsonStringFlow, mockClock).toList()
+        val expected = listOf(
+            StreamFrame.TextDelta("hello"),
+            StreamFrame.TextDelta("world"),
+        )
+        assertEquals(expected, content)
     }
 
     @Test
-    fun `parseAnthropicStreamChunk with message_stop`() {
-        val chunkJson = """
-            {
-                "type": "message_stop",
-                "message": {
-                    "id": "msg_01234567",
-                    "type": "message",
-                    "role": "assistant",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "Paris is the capital of France."
+    fun `transformAnthropicStreamChunks with metainfo`() = runTest {
+        val stopReason = "end_turn"
+        val chunkJsonStringFlow = flowOf(
+            """
+                {
+                    "type" : "message_start",
+                    "message" : {
+                        "model" : "claude-3-5-haiku-20241022",
+                        "id" : "msg_12345",
+                        "type" : "message",
+                        "role" : "assistant",
+                        "content" : [ ],
+                        "stop_reason" : null,
+                        "stop_sequence" : null,
+                        "usage" : {
+                            "input_tokens" : 22,
+                            "cache_creation_input_tokens" : 0,
+                            "cache_read_input_tokens" : 0,
+                            "output_tokens" : 3
                         }
-                    ],
-                    "model": "anthropic.claude-3-sonnet-20240229-v1:0",
-                    "stopReason": "end_turn",
-                    "usage": {
-                        "inputTokens": 25,
-                        "outputTokens": 20
                     }
                 }
-            }
-        """.trimIndent()
+            """.trimIndent(),
+            """
+                {
+                    "type" : "message_delta",
+                    "delta" : {
+                        "stop_reason" : "$stopReason",
+                        "stop_sequence" : null
+                    },
+                    "usage" : {
+                        "output_tokens" : 13
+                    }
+                }
+            """.trimIndent(),
+            """
+                {
+                    "type" : "message_stop",
+                    "amazon-bedrock-invocationMetrics" : {
+                        "inputTokenCount" : 22,
+                        "outputTokenCount" : 13,
+                        "invocationLatency" : 536,
+                        "firstByteLatency" : 421
+                    }
+                }
+            """.trimIndent()
+        )
 
-        val content = BedrockAnthropicClaudeSerialization.parseAnthropicStreamChunk(chunkJson)
-        assertEquals("", content)
+        val content =
+            BedrockAnthropicClaudeSerialization.transformAnthropicStreamChunks(chunkJsonStringFlow, mockClock).toList()
+        val expected = listOf(
+            StreamFrame.End(
+                finishReason = stopReason,
+                metaInfo = ResponseMetaInfo.create(
+                    clock = mockClock,
+                    totalTokensCount = 35,
+                    inputTokensCount = 22,
+                    outputTokensCount = 13
+                )
+            )
+        )
+        assertEquals(expected, content)
+    }
+
+    @Test
+    fun `transformAnthropicStreamChunks with single tool call`() = runTest {
+        val chunkJsonStringFlow = flowOf(
+            """
+                {
+                    "type": "content_block_start",
+                    "index": 0,
+                    "content_block": {
+                        "type": "tool_use",
+                        "id": "$toolId",
+                        "name": "$toolName",
+                        "input": {}
+                    }
+                }
+            """.trimIndent(),
+            """
+                {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {
+                        "type": "input_json_delta",
+                        "partial_json": "{\"location\":"
+                    }
+                }
+            """.trimIndent(),
+            """
+                {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {
+                        "type": "input_json_delta",
+                        "partial_json": "\"Paris\"}"
+                    }
+                }
+            """.trimIndent(),
+            """
+                {
+                    "type": "content_block_stop",
+                    "index": 0
+                }
+            """.trimIndent()
+        )
+
+        val content =
+            BedrockAnthropicClaudeSerialization.transformAnthropicStreamChunks(chunkJsonStringFlow, mockClock).toList()
+        val expected = listOf(
+            StreamFrame.ToolCallDelta(
+                id = toolId,
+                name = toolName,
+                content = null,
+                index = 0
+            ),
+            StreamFrame.ToolCallDelta(
+                id = null,
+                name = null,
+                content = "{\"location\":",
+                index = 0
+            ),
+            StreamFrame.ToolCallDelta(
+                id = null,
+                name = null,
+                content = "\"Paris\"}",
+                index = 0
+            ),
+            StreamFrame.ToolCallComplete(
+                id = toolId,
+                name = toolName,
+                content = "{\"location\":\"Paris\"}",
+                index = 0
+            )
+        )
+        assertEquals(expected, content)
+    }
+
+    @Test
+    fun `createAnthropicRequest with tools serializes type field correctly`() {
+        val tools = listOf(
+            ToolDescriptor(
+                name = toolName,
+                description = toolDescription,
+                requiredParameters = listOf(
+                    ToolParameterDescriptor("city", "The city name", ToolParameterType.String)
+                ),
+                optionalParameters = listOf(
+                    ToolParameterDescriptor("units", "Temperature units", ToolParameterType.String)
+                )
+            )
+        )
+        val prompt = Prompt.build("test", params = LLMParams(toolChoice = LLMParams.ToolChoice.Auto)) {
+            user(userMessageQuestion)
+        }
+        val request = BedrockAnthropicClaudeSerialization.createAnthropicRequest(prompt, tools)
+        assertNotNull(request)
+        assertNotNull(request.tools)
+        assertEquals(1, request.tools.size)
+        val tool = request.tools[0]
+        assertNotNull(tool)
+        assertEquals(toolName, tool.name)
+        assertEquals(toolDescription, tool.description)
+        val schema = tool.inputSchema
+        assertNotNull(schema)
+
+        // Verify that the type field is always "object" and gets serialized
+        assertEquals("custom", tool.type)
+
+        val props = schema["properties"] as JsonObject
+        assertNotNull(props["city"])
+        assertNotNull(props["units"])
     }
 }

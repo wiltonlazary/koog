@@ -16,10 +16,9 @@ kotlin {
         commonMain {
             dependencies {
                 api(project(":agents:agents-core"))
-                api(project(":agents:agents-features:agents-features-common"))
-                api(project(":agents:agents-features:agents-features-trace"))
-
+                api(project(":agents:agents-utils"))
                 api(libs.kotlinx.serialization.json)
+                implementation(project(":agents:agents-mcp-metadata"))
             }
         }
 
@@ -27,8 +26,8 @@ kotlin {
             dependencies {
                 api(project.dependencies.platform(libs.opentelemetry.bom))
                 api(libs.opentelemetry.sdk)
-                implementation(libs.opentelemetry.exporter.otlp)
-                implementation(libs.opentelemetry.exporter.logging)
+                api(libs.opentelemetry.exporter.otlp)
+                api(libs.opentelemetry.exporter.logging)
             }
 
             resources.srcDir(layout.buildDirectory.dir("generated/resources"))
@@ -45,6 +44,8 @@ kotlin {
             dependencies {
                 implementation(kotlin("test-junit5"))
                 implementation(project(":agents:agents-test"))
+                implementation(libs.opentelemetry.sdk.testing)
+                implementation(libs.junit.jupiter.params)
             }
         }
     }
@@ -62,17 +63,17 @@ val generateProductProperties = tasks.register("generateProductProperties") {
 
     doLast {
         propertiesFile.asFile.parentFile.mkdirs()
-        propertiesFile.asFile.writeText("""
+        propertiesFile.asFile.writeText(
+            """
             version=$rootProjectVersion
             name=$rootProjectGroup
-        """.trimIndent())
+            """.trimIndent()
+        )
     }
 }
-
 
 tasks.named("jvmProcessResources") {
     dependsOn(generateProductProperties)
 }
-
 
 publishToMaven()

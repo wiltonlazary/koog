@@ -13,11 +13,13 @@ kotlin {
         commonMain {
             dependencies {
                 api(project(":prompt:prompt-executor:prompt-executor-clients:prompt-executor-anthropic-client"))
+                api(project(":prompt:prompt-executor:prompt-executor-clients:prompt-executor-bedrock-client"))
+                api(project(":prompt:prompt-executor:prompt-executor-clients:prompt-executor-deepseek-client"))
                 api(project(":prompt:prompt-executor:prompt-executor-clients:prompt-executor-google-client"))
+                api(project(":prompt:prompt-executor:prompt-executor-clients:prompt-executor-mistralai-client"))
+                api(project(":prompt:prompt-executor:prompt-executor-clients:prompt-executor-ollama-client"))
                 api(project(":prompt:prompt-executor:prompt-executor-clients:prompt-executor-openai-client"))
                 api(project(":prompt:prompt-executor:prompt-executor-clients:prompt-executor-openrouter-client"))
-                api(project(":prompt:prompt-executor:prompt-executor-clients:prompt-executor-ollama-client"))
-                api(project(":prompt:prompt-executor:prompt-executor-clients:prompt-executor-bedrock-client"))
                 api(project(":prompt:prompt-executor:prompt-executor-llms"))
                 api(project(":agents:agents-core"))
                 api(project(":agents:agents-ext"))
@@ -31,11 +33,7 @@ kotlin {
                 api(libs.ktor.client.content.negotiation)
             }
         }
-        jvmMain {
-            dependencies {
-                api(libs.ktor.client.cio)
-            }
-        }
+
         commonTest {
             dependencies {
                 implementation(kotlin("test"))
@@ -45,6 +43,8 @@ kotlin {
         jvmTest {
             dependencies {
                 implementation(kotlin("test-junit5"))
+                implementation(libs.ktor.client.cio)
+                implementation(libs.ktor.client.mock)
                 runtimeOnly(libs.slf4j.simple)
             }
         }
@@ -52,6 +52,5 @@ kotlin {
 
     explicitApi()
 }
-
 
 publishToMaven()

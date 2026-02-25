@@ -6,6 +6,7 @@ import ai.koog.agents.memory.model.MemoryScope
 import ai.koog.agents.memory.model.MemorySubject
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlin.jvm.JvmOverloads
 
 /**
  * Core interface for managing an agent's persistent memory system.
@@ -73,7 +74,7 @@ public interface AgentMemoryProvider {
      * @param scope Visibility boundary to consider
      * @return List of matching facts, empty if none found
      */
-    public  suspend fun load(concept: Concept, subject: MemorySubject, scope: MemoryScope): List<Fact>
+    public suspend fun load(concept: Concept, subject: MemorySubject, scope: MemoryScope): List<Fact>
 
     /**
      * Retrieves all facts within a specific context.
@@ -86,7 +87,7 @@ public interface AgentMemoryProvider {
      * @param scope Visibility boundary to consider
      * @return All available facts in the context
      */
-    public  suspend fun loadAll(subject: MemorySubject, scope: MemoryScope): List<Fact>
+    public suspend fun loadAll(subject: MemorySubject, scope: MemoryScope): List<Fact>
 
     /**
      * Performs semantic search across stored facts.
@@ -105,7 +106,7 @@ public interface AgentMemoryProvider {
      * @param scope Visibility boundary to consider
      * @return Facts matching the semantic query
      */
-    public  suspend fun loadByDescription(description: String, subject: MemorySubject, scope: MemoryScope): List<Fact>
+    public suspend fun loadByDescription(description: String, subject: MemorySubject, scope: MemoryScope): List<Fact>
 }
 
 /**
@@ -148,7 +149,7 @@ public sealed interface MemoryProviderConfig {
  */
 @Serializable
 @SerialName("local")
-public data class LocalMemoryConfig(
+public data class LocalMemoryConfig @JvmOverloads constructor(
     val storageDirectory: String,
     override val defaultScope: MemoryScope = MemoryScope.CrossProduct,
 ) : MemoryProviderConfig

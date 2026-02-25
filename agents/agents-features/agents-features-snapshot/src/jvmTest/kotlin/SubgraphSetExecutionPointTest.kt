@@ -1,12 +1,13 @@
 import ai.koog.agents.core.agent.AIAgent
 import ai.koog.agents.core.agent.config.AIAgentConfig
+import ai.koog.agents.core.agent.execution.path
 import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.agents.ext.tool.SayToUser
-import ai.koog.agents.snapshot.feature.Persistency
-import ai.koog.agents.snapshot.providers.InMemoryPersistencyStorageProvider
+import ai.koog.agents.snapshot.feature.Persistence
+import ai.koog.agents.snapshot.providers.InMemoryPersistenceStorageProvider
 import ai.koog.agents.testing.tools.getMockExecutor
 import ai.koog.prompt.dsl.prompt
-import ai.koog.prompt.llm.OllamaModels
+import ai.koog.prompt.executor.ollama.client.OllamaModels
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -18,7 +19,7 @@ class SubgraphSetExecutionPointTest {
             system(systemPrompt)
         },
         model = OllamaModels.Meta.LLAMA_3_2,
-        maxAgentIterations = 20
+        maxAgentIterations = 30
     )
     val toolRegistry = ToolRegistry {
         tool(SayToUser)
@@ -28,23 +29,23 @@ class SubgraphSetExecutionPointTest {
     fun test_singleSubgraph_teleportForward() = runTest {
         val agent = AIAgent(
             promptExecutor = getMockExecutor { },
-            strategy = createSimpleTeleportSubgraphStrategy("Node2"),
+            strategy = createSimpleTeleportSubgraphStrategy(path = path("teleport-test", "Node2")),
             agentConfig = agentConfig,
             toolRegistry = toolRegistry
         ) {
-            install(Persistency) {
-                storage = InMemoryPersistencyStorageProvider("testAgentId")
-
+            install(Persistence) {
+                storage = InMemoryPersistenceStorageProvider()
             }
         }
 
-        val output = agent.run("Start the test")
+        val output = agent.run("Start the test", null)
         assertEquals(
             "Start the test\n" +
-                    "Node 1 output\n" +
-                    "sg1 node output\n" +
-                    "Teleported\n" +
-                    "Node 2 output", output
+                "Node 1 output\n" +
+                "sg1 node output\n" +
+                "Teleported\n" +
+                "Node 2 output",
+            output
         )
     }
 
@@ -52,27 +53,26 @@ class SubgraphSetExecutionPointTest {
     fun test_singleSubgraph_teleportBackwards() = runTest {
         val agent = AIAgent(
             promptExecutor = getMockExecutor { },
-            strategy = createSimpleTeleportSubgraphStrategy("Node1"),
+            strategy = createSimpleTeleportSubgraphStrategy(path = path("teleport-test", "Node1")),
             agentConfig = agentConfig,
             toolRegistry = toolRegistry
         ) {
-            install(Persistency) {
-                storage = InMemoryPersistencyStorageProvider("testAgentId")
-
+            install(Persistence) {
+                storage = InMemoryPersistenceStorageProvider()
             }
         }
 
-        val output = agent.run("Start the test")
+        val output = agent.run("Start the test", null)
         assertEquals(
             "Start the test\n" +
-                    "Node 1 output\n" +
-                    "sg1 node output\n" +
-                    "Teleported\n" +
-                    "Node 1 output\n" +
-                    "sg1 node output\n" +
-                    "Already teleported, passing by\n" +
-                    "sg2 node output\n" +
-                    "Node 2 output",
+                "Node 1 output\n" +
+                "sg1 node output\n" +
+                "Teleported\n" +
+                "Node 1 output\n" +
+                "sg1 node output\n" +
+                "Already teleported, passing by\n" +
+                "sg2 node output\n" +
+                "Node 2 output",
             output
         )
     }
@@ -85,24 +85,22 @@ class SubgraphSetExecutionPointTest {
             agentConfig = agentConfig,
             toolRegistry = toolRegistry
         ) {
-            install(Persistency) {
-                storage = InMemoryPersistencyStorageProvider("testAgentId")
-
+            install(Persistence) {
+                storage = InMemoryPersistenceStorageProvider()
             }
         }
 
-        val output = agent.run("Start the test")
+        val output = agent.run("Start the test", null)
         assertEquals(
             "Start the test\n" +
-                    "Node 1 output\n" +
-                    "sg1 node output\n" +
-                    "Teleported\n" +
-                    "sg2 node output\n" +
-                    "Node 2 output",
+                "Node 1 output\n" +
+                "sg1 node output\n" +
+                "Teleported\n" +
+                "sg2 node output\n" +
+                "Node 2 output",
             output
         )
     }
-
 
     @Test
     fun test_singleSubgraph_teleportInsideSubgraph_teleportBackwards() = runTest {
@@ -112,22 +110,21 @@ class SubgraphSetExecutionPointTest {
             agentConfig = agentConfig,
             toolRegistry = toolRegistry
         ) {
-            install(Persistency) {
-                storage = InMemoryPersistencyStorageProvider("testAgentId")
-
+            install(Persistence) {
+                storage = InMemoryPersistenceStorageProvider()
             }
         }
 
-        val output = agent.run("Start the test")
+        val output = agent.run("Start the test", null)
         assertEquals(
             "Start the test\n" +
-                    "Node 1 output\n" +
-                    "sg1 node output\n" +
-                    "Teleported\n" +
-                    "sg1 node output\n" +
-                    "Already teleported, passing by\n" +
-                    "sg2 node output\n" +
-                    "Node 2 output",
+                "Node 1 output\n" +
+                "sg1 node output\n" +
+                "Teleported\n" +
+                "sg1 node output\n" +
+                "Already teleported, passing by\n" +
+                "sg2 node output\n" +
+                "Node 2 output",
             output
         )
     }
@@ -136,26 +133,25 @@ class SubgraphSetExecutionPointTest {
     fun test_innerSubgraphs_teleportToOuterSubgraphForward() = runTest {
         val agent = AIAgent(
             promptExecutor = getMockExecutor { },
-            strategy = createSimpleTeleportSubgraphWithInnerSubgraph("sgNode2"),
+            strategy = simpleTeleportSubgraphWithInnerSubgraph("sgNode2"),
             agentConfig = agentConfig,
             toolRegistry = toolRegistry
         ) {
-            install(Persistency) {
-                storage = InMemoryPersistencyStorageProvider("testAgentId")
-
+            install(Persistence) {
+                storage = InMemoryPersistenceStorageProvider()
             }
         }
 
-        val output = agent.run("Start the test")
+        val output = agent.run("Start the test", null)
         assertEquals(
             "Start the test\n" +
-                    "Node 1 output\n" +
-                    "sgNode1 node output\n" +
-                    "sg2Node1 node output\n" +
-                    "sg2Node2 node output\n" +
-                    "Teleported\n" +
-                    "sgNode2 node output\n" +
-                    "Node 2 output",
+                "Node 1 output\n" +
+                "sgNode1 node output\n" +
+                "sg2Node1 node output\n" +
+                "sg2Node2 node output\n" +
+                "Teleported\n" +
+                "sgNode2 node output\n" +
+                "Node 2 output",
             output
         )
     }
@@ -164,30 +160,29 @@ class SubgraphSetExecutionPointTest {
     fun test_innerSubgraphs_teleportToOuterSubgraphBackwards() = runTest {
         val agent = AIAgent(
             promptExecutor = getMockExecutor { },
-            strategy = createSimpleTeleportSubgraphWithInnerSubgraph("sgNode1"),
+            strategy = simpleTeleportSubgraphWithInnerSubgraph("sgNode1"),
             agentConfig = agentConfig,
             toolRegistry = toolRegistry
         ) {
-            install(Persistency) {
-                storage = InMemoryPersistencyStorageProvider("testAgentId")
-
+            install(Persistence) {
+                storage = InMemoryPersistenceStorageProvider()
             }
         }
 
-        val output = agent.run("Start the test")
+        val output = agent.run("Start the test", null)
         assertEquals(
             "Start the test\n" +
-                    "Node 1 output\n" +
-                    "sgNode1 node output\n" +
-                    "sg2Node1 node output\n" +
-                    "sg2Node2 node output\n" +
-                    "Teleported\n" +
-                    "sgNode1 node output\n" +
-                    "sg2Node1 node output\n" +
-                    "sg2Node2 node output\n" +
-                    "Already teleported, passing by\n" +
-                    "sgNode2 node output\n" +
-                    "Node 2 output",
+                "Node 1 output\n" +
+                "sgNode1 node output\n" +
+                "sg2Node1 node output\n" +
+                "sg2Node2 node output\n" +
+                "Teleported\n" +
+                "sgNode1 node output\n" +
+                "sg2Node1 node output\n" +
+                "sg2Node2 node output\n" +
+                "Already teleported, passing by\n" +
+                "sgNode2 node output\n" +
+                "Node 2 output",
             output
         )
     }

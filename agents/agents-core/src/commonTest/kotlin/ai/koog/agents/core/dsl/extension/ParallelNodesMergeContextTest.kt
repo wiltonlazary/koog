@@ -2,18 +2,17 @@ package ai.koog.agents.core.dsl.extension
 
 import ai.koog.agents.core.agent.AIAgent
 import ai.koog.agents.core.agent.config.AIAgentConfig
+import ai.koog.agents.core.agent.entity.AIAgentGraphStrategy
 import ai.koog.agents.core.agent.entity.AIAgentStorageKey
-import ai.koog.agents.core.agent.entity.AIAgentStrategy
+import ai.koog.agents.core.dsl.builder.AIAgentGraphStrategyBuilder
 import ai.koog.agents.core.dsl.builder.AIAgentNodeDelegate
-import ai.koog.agents.core.dsl.builder.AIAgentStrategyBuilder
 import ai.koog.agents.core.dsl.builder.forwardTo
 import ai.koog.agents.core.dsl.builder.strategy
 import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.agents.testing.tools.DummyTool
 import ai.koog.agents.testing.tools.getMockExecutor
-import ai.koog.agents.testing.tools.mockLLMAnswer
 import ai.koog.prompt.dsl.prompt
-import ai.koog.prompt.llm.OllamaModels
+import ai.koog.prompt.executor.ollama.client.OllamaModels
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -23,7 +22,7 @@ class ParallelNodesMergeContextTest {
 
     private val testKey = AIAgentStorageKey<String>("testKey")
 
-    private fun AIAgentStrategyBuilder<String, String>.testNode(
+    private fun AIAgentGraphStrategyBuilder<String, String>.testNode(
         name: String,
         value: String
     ): AIAgentNodeDelegate<Unit, String> {
@@ -33,7 +32,7 @@ class ParallelNodesMergeContextTest {
         }
     }
 
-    suspend fun runAgent(strategy: AIAgentStrategy<String, String>): String? {
+    suspend fun runAgent(strategy: AIAgentGraphStrategy<String, String>): String? {
         val agentConfig = AIAgentConfig(
             prompt = prompt("test-agent") {},
             model = OllamaModels.Meta.LLAMA_3_2,
@@ -53,13 +52,12 @@ class ParallelNodesMergeContextTest {
             }
         )
 
-        return agent.run("")
+        return agent.run("", null)
     }
 
     @Test
     fun testMergeFold() = runTest {
         val agentStrategy = strategy("test-context") {
-
             val node1 by testNode("node1", "value1")
             val node2 by testNode("node2", "value2")
             val node3 by testNode("node3", "value3")
@@ -88,7 +86,6 @@ class ParallelNodesMergeContextTest {
     @Test
     fun testMergeSelectBy() = runTest {
         val agentStrategy = strategy("test-context") {
-
             val node1 by testNode("node1", "value1")
             val node2 by testNode("node2", "value2")
             val node3 by testNode("node3", "value3")
@@ -115,7 +112,6 @@ class ParallelNodesMergeContextTest {
     @Test
     fun testMergeSelectByIndex() = runTest {
         val agentStrategy = strategy("test-context") {
-
             val node1 by testNode("node1", "value1")
             val node2 by testNode("node2", "value2")
             val node3 by testNode("node3", "value3")
@@ -142,7 +138,6 @@ class ParallelNodesMergeContextTest {
     @Test
     fun testMergeSelectMax() = runTest {
         val agentStrategy = strategy("test-context") {
-
             val node1 by testNode("node1", "value1")
             val node2 by testNode("node2", "value2")
             val node3 by testNode("node3", "value3")

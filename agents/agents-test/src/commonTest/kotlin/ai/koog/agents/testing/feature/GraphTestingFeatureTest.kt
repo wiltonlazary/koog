@@ -4,11 +4,14 @@ import ai.koog.agents.core.agent.AIAgent
 import ai.koog.agents.core.agent.config.AIAgentConfig
 import ai.koog.agents.core.dsl.builder.forwardTo
 import ai.koog.agents.core.dsl.builder.strategy
-import ai.koog.agents.core.dsl.extension.*
+import ai.koog.agents.core.dsl.extension.nodeExecuteTool
+import ai.koog.agents.core.dsl.extension.nodeLLMRequest
+import ai.koog.agents.core.dsl.extension.nodeLLMSendToolResult
+import ai.koog.agents.core.dsl.extension.onAssistantMessage
+import ai.koog.agents.core.dsl.extension.onToolCall
 import ai.koog.agents.core.environment.ReceivedToolResult
 import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.agents.testing.tools.getMockExecutor
-import ai.koog.agents.testing.tools.mockLLMAnswer
 import ai.koog.prompt.dsl.prompt
 import ai.koog.prompt.executor.clients.openai.OpenAIModels
 import ai.koog.prompt.message.Message
@@ -33,7 +36,7 @@ class GraphTestingFeatureTest {
                 val sendToolResult by nodeLLMSendToolResult()
                 val giveFeedback by node<String, String> { input ->
                     llm.writeSession {
-                        updatePrompt {
+                        appendPrompt {
                             user("Call tools! Don't chat!")
                         }
                     }
@@ -101,15 +104,17 @@ class GraphTestingFeatureTest {
                         askLLM withInput "Hello" outputs assistantMessage("Hello!")
                         askLLM withInput "Solve task" outputs toolCallMessage(CreateTool, CreateTool.Args("solve"))
 
+                        val createToolArgs = SolveTool.Args("solve")
                         callTool withInput toolCallMessage(
                             SolveTool,
-                            SolveTool.Args("solve")
-                        ) outputs toolResult(SolveTool, "solved")
+                            createToolArgs,
+                        ) outputs toolResult(SolveTool, createToolArgs, result = "solved")
 
+                        val solveToolArgs = CreateTool.Args("solve")
                         callTool withInput toolCallMessage(
                             CreateTool,
-                            CreateTool.Args("solve")
-                        ) outputs toolResult(CreateTool, "created")
+                            solveToolArgs,
+                        ) outputs toolResult(CreateTool, solveToolArgs, result = "created")
                     }
 
                     assertEdges {
@@ -120,7 +125,6 @@ class GraphTestingFeatureTest {
             }
         }
     }
-
 
     @Test
     fun testTestingFeatureAPI() {

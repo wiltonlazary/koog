@@ -2,8 +2,8 @@ package ai.koog.prompt.cache.memory
 
 import ai.koog.prompt.cache.model.PromptCache
 import ai.koog.prompt.message.Message
-import kotlinx.datetime.Clock
-import kotlinx.datetime.Instant
+import kotlin.time.Clock
+import kotlin.time.Instant
 
 /**
  * In-memory implementation of [PromptCache].
@@ -25,8 +25,10 @@ public class InMemoryPromptCache(private val maxEntries: Int?) : PromptCache {
             val limit = when {
                 parts.size == 1 || parts[1].isEmpty() -> null
                 parts[1].equals("unlimited", ignoreCase = true) -> null
-                parts[1].startsWith("-") -> error("Invalid memory cache size limit: ${parts[1]}. Expected a positive number or 'unlimited'.")
-                else -> parts[1].toIntOrNull()
+                parts[1].startsWith(
+                    "-"
+                ) -> error("Invalid memory cache size limit: ${parts[1]}. Expected a positive number or 'unlimited'.")
+                else -> parts[1].toIntOrNull()?.takeIf { it > 0 }
                     ?: error("Invalid memory cache size limit: ${parts[1]}. Expected a positive number or 'unlimited'.")
             }
             return InMemoryPromptCache(limit)

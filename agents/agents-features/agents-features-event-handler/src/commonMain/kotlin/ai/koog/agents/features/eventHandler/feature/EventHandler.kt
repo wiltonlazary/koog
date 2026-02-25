@@ -1,60 +1,64 @@
+@file:OptIn(InternalAgentsApi::class)
+
 package ai.koog.agents.features.eventHandler.feature
 
-import ai.koog.agents.core.agent.AIAgent.FeatureContext
+import ai.koog.agents.core.agent.GraphAIAgent.FeatureContext
 import ai.koog.agents.core.agent.entity.AIAgentStorageKey
-import ai.koog.agents.core.feature.AIAgentFeature
-import ai.koog.agents.core.feature.AIAgentPipeline
-import ai.koog.agents.core.feature.InterceptContext
-import ai.koog.agents.core.feature.handler.*
+import ai.koog.agents.core.annotation.InternalAgentsApi
+import ai.koog.agents.core.feature.AIAgentFunctionalFeature
+import ai.koog.agents.core.feature.AIAgentGraphFeature
+import ai.koog.agents.core.feature.AIAgentPlannerFeature
+import ai.koog.agents.core.feature.handler.llm.LLMCallCompletedContext
+import ai.koog.agents.core.feature.handler.llm.LLMCallStartingContext
+import ai.koog.agents.core.feature.handler.node.NodeExecutionCompletedContext
+import ai.koog.agents.core.feature.handler.node.NodeExecutionFailedContext
+import ai.koog.agents.core.feature.handler.node.NodeExecutionStartingContext
+import ai.koog.agents.core.feature.handler.streaming.LLMStreamingCompletedContext
+import ai.koog.agents.core.feature.handler.streaming.LLMStreamingFrameReceivedContext
+import ai.koog.agents.core.feature.handler.streaming.LLMStreamingStartingContext
+import ai.koog.agents.core.feature.handler.subgraph.SubgraphExecutionCompletedContext
+import ai.koog.agents.core.feature.handler.subgraph.SubgraphExecutionFailedContext
+import ai.koog.agents.core.feature.handler.subgraph.SubgraphExecutionStartingContext
+import ai.koog.agents.core.feature.handler.tool.ToolCallCompletedContext
+import ai.koog.agents.core.feature.handler.tool.ToolCallFailedContext
+import ai.koog.agents.core.feature.handler.tool.ToolCallStartingContext
+import ai.koog.agents.core.feature.handler.tool.ToolValidationFailedContext
+import ai.koog.agents.core.feature.pipeline.AIAgentFunctionalPipeline
+import ai.koog.agents.core.feature.pipeline.AIAgentGraphPipeline
+import ai.koog.agents.core.feature.pipeline.AIAgentPipeline
+import ai.koog.agents.core.feature.pipeline.AIAgentPlannerPipeline
 import io.github.oshai.kotlinlogging.KotlinLogging
 
 /**
  * A feature that allows hooking into various events in the agent's lifecycle.
- * 
+ *
  * The EventHandler provides a way to register callbacks for different events that occur during
  * the execution of an agent, such as agent lifecycle events, strategy events, node events,
  * LLM call events, and tool call events.
- * 
+ *
  * Example usage:
  * ```
  * handleEvents {
- *     onToolCall { stage, tool, toolArgs ->
- *         println("Tool called: ${tool.name} with args $toolArgs")
+ *     onToolCallStarting { eventContext ->
+ *         println("Tool called: ${eventContext.toolName} with args ${eventContext.toolArgs}")
  *     }
- *     
- *     onAgentFinished { strategyName, result ->
- *         println("Agent finished with result: $result")
+ *
+ *     onAgentCompleted { eventContext ->
+ *         println("Agent finished with result: ${eventContext.result}")
  *     }
  * }
  * ```
  */
 public class EventHandler {
     /**
-     * Implementation of the [AIAgentFeature] interface for the [EventHandler] feature.
-     * 
-     * This companion object provides the necessary functionality to install the [EventHandler]
-     * feature into an agent's pipeline. It intercepts various events in the agent's lifecycle
-     * and forwards them to the appropriate handlers defined in the [EventHandlerConfig].
-     *
-     * The EventHandler provides a way to register callbacks for different events that occur during
-     * the execution of an agent, such as agent lifecycle events, strategy events, node events,
-     * LLM call events, and tool call events.
-     *
-     * Example usage:
-     * ```
-     * handleEvents {
-     *     onToolCall { stage, tool, toolArgs ->
-     *         println("Tool called: ${tool.name} with args $toolArgs")
-     *     }
-     *
-     *     onAgentFinished { strategyName, result ->
-     *         println("Agent finished with result: $result")
-     *     }
-     * }
+     * Companion object implementing agent feature, handling [EventHandler] creation and installation.
      */
-    public companion object Feature : AIAgentFeature<EventHandlerConfig, EventHandler> {
+    public companion object Feature :
+        AIAgentGraphFeature<EventHandlerConfig, EventHandler>,
+        AIAgentFunctionalFeature<EventHandlerConfig, EventHandler>,
+        AIAgentPlannerFeature<EventHandlerConfig, EventHandler> {
 
-        private val logger = KotlinLogging.logger {  }
+        private val logger = KotlinLogging.logger { }
 
         override val key: AIAgentStorageKey<EventHandler> =
             AIAgentStorageKey("agents-features-event-handler")
@@ -63,88 +67,138 @@ public class EventHandler {
 
         override fun install(
             config: EventHandlerConfig,
-            pipeline: AIAgentPipeline,
-        ) {
+            pipeline: AIAgentGraphPipeline,
+        ): EventHandler {
             logger.info { "Start installing feature: ${EventHandler::class.simpleName}" }
 
-            val featureImpl = EventHandler()
-            val interceptContext = InterceptContext(this, featureImpl)
+            val eventHandler = EventHandler()
 
-            //region Intercept Agent Events
+            registerCommonPipelineHandlers(config, pipeline)
+            registerGraphPipelineHandlers(config, pipeline)
 
-            pipeline.interceptBeforeAgentStarted(interceptContext) intercept@{ eventContext ->
-                config.invokeOnBeforeAgentStarted(eventContext)
+            return eventHandler
+        }
+
+        override fun install(
+            config: EventHandlerConfig,
+            pipeline: AIAgentFunctionalPipeline,
+        ): EventHandler {
+            val eventHandler = EventHandler()
+
+            registerCommonPipelineHandlers(config, pipeline)
+
+            return eventHandler
+        }
+
+        override fun install(
+            config: EventHandlerConfig,
+            pipeline: AIAgentPlannerPipeline
+        ): EventHandler {
+            val eventHandler = EventHandler()
+
+            registerCommonPipelineHandlers(config, pipeline)
+
+            return eventHandler
+        }
+
+        private fun registerGraphPipelineHandlers(
+            config: EventHandlerConfig,
+            pipeline: AIAgentGraphPipeline,
+        ) {
+            pipeline.interceptAgentStarting(this) intercept@{ eventContext ->
+                config.invokeOnAgentStarting(eventContext)
             }
 
-            pipeline.interceptAgentFinished(interceptContext) intercept@{ eventContext ->
-                config.invokeOnAgentFinished(eventContext)
+            pipeline.interceptNodeExecutionStarting(this) intercept@{ eventContext: NodeExecutionStartingContext ->
+                config.invokeOnNodeExecutionStarting(eventContext)
             }
 
-            pipeline.interceptAgentRunError(interceptContext) intercept@{ eventContext ->
-                config.invokeOnAgentRunError(eventContext)
+            pipeline.interceptNodeExecutionCompleted(this) intercept@{ eventContext: NodeExecutionCompletedContext ->
+                config.invokeOnNodeExecutionCompleted(eventContext)
             }
 
-            pipeline.interceptAgentBeforeClosed(interceptContext) intercept@{ eventContext ->
-                config.invokeOnAgentBeforeClose(eventContext)
+            pipeline.interceptNodeExecutionFailed(this) intercept@{ eventContext: NodeExecutionFailedContext ->
+                config.invokeOnNodeExecutionFailed(eventContext)
             }
 
-            //endregion Intercept Agent Events
-
-            //region Intercept Strategy Events
-
-            pipeline.interceptStrategyStarted(interceptContext) intercept@{ eventContext ->
-                config.invokeOnStrategyStarted(eventContext)
+            pipeline.interceptSubgraphExecutionStarting(this) intercept@{ eventContext: SubgraphExecutionStartingContext ->
+                config.invokeOnSubgraphExecutionStarting(eventContext)
             }
 
-            pipeline.interceptStrategyFinished(interceptContext) intercept@{ eventContext ->
-                config.invokeOnStrategyFinished(eventContext)
+            pipeline.interceptSubgraphExecutionCompleted(this) intercept@{ eventContext: SubgraphExecutionCompletedContext ->
+                config.invokeOnSubgraphExecutionCompleted(eventContext)
             }
 
-            //endregion Intercept Strategy Events
+            pipeline.interceptSubgraphExecutionFailed(this) intercept@{ eventContext: SubgraphExecutionFailedContext ->
+                config.invokeOnSubgraphExecutionFailed(eventContext)
+            }
+        }
 
-            //region Intercept Node Events
-
-            pipeline.interceptBeforeNode(interceptContext) intercept@{ eventContext: NodeBeforeExecuteContext ->
-                config.invokeOnBeforeNode(eventContext)
+        private fun registerCommonPipelineHandlers(
+            config: EventHandlerConfig,
+            pipeline: AIAgentPipeline,
+        ) {
+            pipeline.interceptAgentCompleted(this) intercept@{ eventContext ->
+                config.invokeOnAgentCompleted(eventContext)
             }
 
-            pipeline.interceptAfterNode(interceptContext) intercept@{ eventContext: NodeAfterExecuteContext ->
-                config.invokeOnAfterNode(eventContext)
+            pipeline.interceptAgentExecutionFailed(this) intercept@{ eventContext ->
+                config.invokeOnAgentExecutionFailed(eventContext)
             }
 
-            //endregion Intercept Node Events
-
-            //region Intercept LLM Call Events
-
-            pipeline.interceptBeforeLLMCall(interceptContext) intercept@{ eventContext: BeforeLLMCallContext ->
-                config.invokeOnBeforeLLMCall(eventContext)
+            pipeline.interceptAgentClosing(this) intercept@{ eventContext ->
+                config.invokeOnAgentClosing(eventContext)
             }
 
-            pipeline.interceptAfterLLMCall(interceptContext) intercept@{ eventContext: AfterLLMCallContext ->
-                config.invokeOnAfterLLMCall(eventContext)
+            pipeline.interceptStrategyStarting(this) intercept@{ eventContext ->
+                config.invokeOnStrategyStarting(eventContext)
             }
 
-            //endregion Intercept LLM Call Events
-
-            //region Intercept Tool Call Events
-
-            pipeline.interceptToolCall(interceptContext) intercept@{ eventContext: ToolCallContext ->
-                config.invokeOnToolCall(eventContext)
+            pipeline.interceptStrategyCompleted(this) intercept@{ eventContext ->
+                config.invokeOnStrategyCompleted(eventContext)
             }
 
-            pipeline.interceptToolValidationError(interceptContext) intercept@{ eventContext: ToolValidationErrorContext ->
-                config.invokeOnToolValidationError(eventContext)
+            pipeline.interceptLLMCallStarting(this) intercept@{ eventContext: LLMCallStartingContext ->
+                config.invokeOnLLMCallStarting(eventContext)
             }
 
-            pipeline.interceptToolCallFailure(interceptContext) intercept@{ eventContext: ToolCallFailureContext ->
-                config.invokeOnToolCallFailure(eventContext)
+            pipeline.interceptLLMCallCompleted(this) intercept@{ eventContext: LLMCallCompletedContext ->
+                config.invokeOnLLMCallCompleted(eventContext)
             }
 
-            pipeline.interceptToolCallResult(interceptContext) intercept@{ eventContext: ToolCallResultContext ->
-                config.invokeOnToolCallResult(eventContext)
+            pipeline.interceptToolCallStarting(this) intercept@{ eventContext: ToolCallStartingContext ->
+                config.invokeOnToolCallStarting(eventContext)
             }
 
-            //endregion Intercept Tool Call Events
+            pipeline.interceptToolValidationFailed(
+                this
+            ) intercept@{ eventContext: ToolValidationFailedContext ->
+                config.invokeOnToolValidationFailed(eventContext)
+            }
+
+            pipeline.interceptToolCallFailed(this) intercept@{ eventContext: ToolCallFailedContext ->
+                config.invokeOnToolCallFailed(eventContext)
+            }
+
+            pipeline.interceptToolCallCompleted(this) intercept@{ eventContext: ToolCallCompletedContext ->
+                config.invokeOnToolCallCompleted(eventContext)
+            }
+
+            pipeline.interceptLLMStreamingStarting(this) intercept@{ eventContext: LLMStreamingStartingContext ->
+                config.invokeOnLLMStreamingStarting(eventContext)
+            }
+
+            pipeline.interceptLLMStreamingFrameReceived(this) intercept@{ eventContext: LLMStreamingFrameReceivedContext ->
+                config.invokeOnLLMStreamingFrameReceived(eventContext)
+            }
+
+            pipeline.interceptLLMStreamingFailed(this) intercept@{ eventContext ->
+                config.invokeOnLLMStreamingFailed(eventContext)
+            }
+
+            pipeline.interceptLLMStreamingCompleted(this) intercept@{ eventContext: LLMStreamingCompletedContext ->
+                config.invokeOnLLMStreamingCompleted(eventContext)
+            }
         }
     }
 }
@@ -156,20 +210,20 @@ public class EventHandler {
  * and configure various event handlers for an agent. It allows you to define custom
  * behavior for different events that occur during the agent's execution.
  *
- * @param configure A lambda with receiver that configures the EventHandlerConfig.
+ * @param configure A lambda with a receiver that configures the EventHandlerConfig.
  *                  Use this to set up handlers for specific events.
  *
  * Example:
  * ```
  * handleEvents {
  *     // Log when tools are called
- *     onToolCall { stage, tool, toolArgs ->
- *         println("Tool called: ${tool.name}")
+ *     onToolCallStarting { eventContext ->
+ *         println("Tool called: ${eventContext.toolName} with args: ${eventContext.toolArgs}")
  *     }
- *     
+ *
  *     // Handle errors
- *     onAgentRunError { strategyName, throwable ->
- *         logger.error("Agent error: ${throwable.message}")
+ *     onAgentExecutionFailed { eventContext ->
+ *         logger.error("Agent error: ${eventContext.throwable.message}")
  *     }
  * }
  * ```

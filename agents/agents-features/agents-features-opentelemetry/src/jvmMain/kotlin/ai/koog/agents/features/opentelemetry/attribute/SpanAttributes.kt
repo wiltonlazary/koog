@@ -1,6 +1,19 @@
 package ai.koog.agents.features.opentelemetry.attribute
 
+import ai.koog.agents.core.tools.ToolDescriptor
+import ai.koog.agents.utils.HiddenString
+import ai.koog.prompt.llm.LLMProvider
 import ai.koog.prompt.llm.LLModel
+import ai.koog.prompt.message.ContentPart
+import ai.koog.prompt.message.Message
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonArrayBuilder
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.putJsonArray
 
 /**
  * The class describe Attributes related to a Spans in GenAI system.
@@ -85,6 +98,18 @@ internal object SpanAttributes {
         }
     }
 
+    // gen_ai.provider
+
+    sealed interface Provider : GenAIAttribute {
+        override val key: String
+            get() = super.key.concatKey("provider")
+
+        data class Name(private val provider: LLMProvider) : Provider {
+            override val key: String = super.key.concatKey("name")
+            override val value: String = provider.id
+        }
+    }
+
     // gen_ai.conversation
     sealed interface Conversation : GenAIAttribute {
         override val key: String
@@ -109,6 +134,31 @@ internal object SpanAttributes {
         }
     }
 
+    // gen_ai.input
+    sealed interface Input : GenAIAttribute {
+        override val key: String
+            get() = super.key.concatKey("input")
+
+        // gen_ai.input.messages
+        data class Messages(private val messages: List<Message>) : Input {
+            override val key: String = super.key.concatKey("messages")
+            override val value: HiddenString = HiddenString(
+                JsonArray(
+                    messages.map { message ->
+                        buildJsonObject {
+                            put("role", JsonPrimitive(message.role.name))
+                            putJsonArray("parts") {
+                                message.parts.forEach { part ->
+                                    addContentPart(part, message)
+                                }
+                            }
+                        }
+                    }
+                ).toString()
+            )
+        }
+    }
+
     // gen_ai.output
     sealed interface Output : GenAIAttribute {
         override val key: String
@@ -118,6 +168,25 @@ internal object SpanAttributes {
         data class Type(private val type: OutputType) : Output {
             override val key: String = super.key.concatKey("type")
             override val value: String = type.id
+        }
+
+        // gen_ai.output.messages
+        data class Messages(private val messages: List<Message>) : Output {
+            override val key: String = super.key.concatKey("messages")
+            override val value: HiddenString = HiddenString(
+                JsonArray(
+                    messages.map { message ->
+                        buildJsonObject {
+                            put("role", JsonPrimitive(message.role.name))
+                            putJsonArray("parts") {
+                                message.parts.forEach { part ->
+                                    addContentPart(part, message)
+                                }
+                            }
+                        }
+                    }
+                ).toString()
+            )
         }
 
         enum class OutputType(val id: String) {
@@ -206,11 +275,21 @@ internal object SpanAttributes {
 
         sealed interface FinishReasonType {
             val id: String
-            object ContentFilter : FinishReasonType { override val id = "content_filter" }
-            object Error : FinishReasonType { override val id = "error" }
-            object Length : FinishReasonType { override val id = "length" }
-            object Stop : FinishReasonType { override val id = "stop" }
-            object ToolCalls : FinishReasonType { override val id = "tool_calls" }
+            object ContentFilter : FinishReasonType {
+                override val id = "content_filter"
+            }
+            object Error : FinishReasonType {
+                override val id = "error"
+            }
+            object Length : FinishReasonType {
+                override val id = "length"
+            }
+            object Stop : FinishReasonType {
+                override val id = "stop"
+            }
+            object ToolCalls : FinishReasonType {
+                override val id = "tool_calls"
+            }
             data class Custom(override val id: String) : FinishReasonType
         }
 
@@ -243,6 +322,13 @@ internal object SpanAttributes {
             override val key: String = super.key.concatKey("output_tokens")
             override val value: Int = tokens
         }
+
+        // gen_ai.usage.total_tokens
+        // Note: Non-semantic attribute
+        data class TotalTokens(private val tokens: Int) : Usage {
+            override val key: String = super.key.concatKey("total_tokens")
+            override val value: Int = tokens
+        }
     }
 
     // gen_ai.tool
@@ -260,6 +346,18 @@ internal object SpanAttributes {
                 override val key: String = super.key.concatKey("id")
                 override val value: String = id
             }
+
+            // gen_ai.tool.call.arguments
+            data class Arguments(private val arguments: JsonObject) : Call {
+                override val key: String = super.key.concatKey("arguments")
+                override val value: HiddenString = HiddenString(arguments.toString())
+            }
+
+            // gen_ai.tool.call.result
+            data class Result(private val result: JsonElement) : Call {
+                override val key: String = super.key.concatKey("result")
+                override val value: HiddenString = HiddenString(result.toString())
+            }
         }
 
         // gen_ai.tool.description
@@ -273,5 +371,112 @@ internal object SpanAttributes {
             override val key: String = super.key.concatKey("name")
             override val value: String = name
         }
+
+        // gen_ai.tool.definitions
+        data class Definitions(private val tools: List<ToolDescriptor>) : Tool {
+            override val key: String = super.key.concatKey("definitions")
+            override val value: HiddenString = HiddenString(
+                JsonArray(
+                    tools.map { tool ->
+                        buildJsonObject {
+                            put("type", JsonPrimitive("function"))
+                            put("name", JsonPrimitive(tool.name))
+                            put("description", JsonPrimitive(tool.description))
+                        }
+                    }
+                ).toString()
+            )
+        }
     }
+
+    // gen_ai.system_instructions
+    data class SystemInstructions(private val messages: List<Message.System>) : GenAIAttribute {
+        override val key: String = "system_instructions"
+        override val value: HiddenString = run {
+            val jsonObjects = messages.flatMap { (parts, metaInfo) ->
+                parts.map { part ->
+                    JsonObject(
+                        mapOf(
+                            "type" to JsonPrimitive("text"),
+                            "content" to JsonPrimitive(part.text)
+                        )
+                    )
+                }
+            }
+
+            HiddenString(JsonArray(jsonObjects).toString())
+        }
+    }
+
+    //region Private Methods
+
+    private fun JsonArrayBuilder.addContentPart(part: ContentPart, message: Message) {
+        when (part) {
+            is ContentPart.Text -> {
+                when (message) {
+                    is Message.Tool.Call -> {
+                        addJsonObject {
+                            put("type", JsonPrimitive("tool_call"))
+                            message.id?.let { id -> put("id", JsonPrimitive(id)) }
+                            put("name", JsonPrimitive(message.tool))
+                            put("arguments", message.contentJson)
+                        }
+                    }
+
+                    is Message.Tool.Result -> {
+                        addJsonObject {
+                            put("type", JsonPrimitive("tool_call_response"))
+                            message.id?.let { id -> put("id", JsonPrimitive(id)) }
+                            put("result", JsonPrimitive(part.text))
+                        }
+                    }
+
+                    else -> {
+                        addJsonObject {
+                            put("type", JsonPrimitive("text"))
+                            put("content", JsonPrimitive(part.text))
+                        }
+                    }
+                }
+            }
+
+            is ContentPart.Image -> {
+                addJsonObject {
+                    put("type", JsonPrimitive("image"))
+                    put("format", JsonPrimitive(part.format))
+                    put("mimeType", JsonPrimitive(part.mimeType))
+                    part.fileName?.let { name -> put("fileName", JsonPrimitive(name)) }
+                }
+            }
+
+            is ContentPart.Video -> {
+                addJsonObject {
+                    put("type", JsonPrimitive("video"))
+                    put("format", JsonPrimitive(part.format))
+                    put("mimeType", JsonPrimitive(part.mimeType))
+                    part.fileName?.let { name -> put("fileName", JsonPrimitive(name)) }
+                }
+            }
+
+            is ContentPart.Audio -> {
+                addJsonObject {
+                    put("type", JsonPrimitive("audio"))
+                    put("format", JsonPrimitive(part.format))
+                    put("mimeType", JsonPrimitive(part.mimeType))
+                    part.fileName?.let { name -> put("fileName", JsonPrimitive(name)) }
+                }
+            }
+
+            is ContentPart.File -> {
+                addJsonObject {
+                    put("type", JsonPrimitive("file"))
+                    put("format", JsonPrimitive(part.format))
+                    put("mimeType", JsonPrimitive(part.mimeType))
+                    part.fileName?.let { name -> put("fileName", JsonPrimitive(name)) }
+                }
+            }
+        }
+    }
+
+    //endregion Private Methods
 }

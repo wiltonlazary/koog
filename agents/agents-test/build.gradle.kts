@@ -13,7 +13,6 @@ kotlin {
         commonMain {
             dependencies {
                 api(project(":agents:agents-core"))
-                api(project(":agents:agents-ext"))
                 api(project(":prompt:prompt-executor:prompt-executor-clients:prompt-executor-openai-client"))
                 api(project(":prompt:prompt-executor:prompt-executor-llms-all"))
                 api(project(":prompt:prompt-tokenizer"))
@@ -30,16 +29,15 @@ kotlin {
 
         commonTest {
             dependencies {
-                implementation(libs.kotlinx.coroutines.test)
+                implementation(project(":test-utils"))
             }
         }
 
         jvmTest {
             dependencies {
                 implementation(project(":agents:agents-features:agents-features-event-handler"))
-                implementation(kotlin("test-junit5"))
-                implementation(libs.junit.jupiter.params)
                 implementation(libs.ktor.client.cio)
+                implementation(project(":agents:agents-ext"))
             }
         }
     }

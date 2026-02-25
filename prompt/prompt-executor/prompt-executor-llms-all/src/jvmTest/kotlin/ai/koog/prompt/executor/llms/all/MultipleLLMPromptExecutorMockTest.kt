@@ -8,19 +8,23 @@ import ai.koog.prompt.executor.clients.google.GoogleLLMClient
 import ai.koog.prompt.executor.clients.google.GoogleModels
 import ai.koog.prompt.executor.clients.openai.OpenAILLMClient
 import ai.koog.prompt.executor.clients.openai.OpenAIModels
-import ai.koog.prompt.executor.model.PromptExecutorExt.execute
+import ai.koog.prompt.executor.llms.MultiLLMPromptExecutor
+import ai.koog.prompt.llm.LLMProvider
 import ai.koog.prompt.llm.LLModel
 import ai.koog.prompt.message.Message
 import ai.koog.prompt.message.ResponseMetaInfo
+import ai.koog.prompt.streaming.StreamFrame
+import ai.koog.prompt.streaming.filterTextOnly
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
-import kotlinx.datetime.Clock
-import kotlinx.datetime.Instant
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.time.Clock
+import kotlin.time.Instant
 
 class MultipleLLMPromptExecutorMockTest {
 
@@ -42,9 +46,12 @@ class MultipleLLMPromptExecutorMockTest {
             return listOf(Message.Assistant("OpenAI response", ResponseMetaInfo.create(mockClock)))
         }
 
-        override fun executeStreaming(prompt: Prompt, model: LLModel): Flow<String> {
-            return flowOf("OpenAI", " streaming", " response")
-        }
+        override fun executeStreaming(
+            prompt: Prompt,
+            model: LLModel,
+            tools: List<ToolDescriptor>
+        ): Flow<StreamFrame> =
+            flowOf("OpenAI", " streaming", " response").map(StreamFrame::TextDelta)
     }
 
     // Mock client for Anthropic
@@ -57,9 +64,12 @@ class MultipleLLMPromptExecutorMockTest {
             return listOf(Message.Assistant("Anthropic response", ResponseMetaInfo.create(mockClock)))
         }
 
-        override fun executeStreaming(prompt: Prompt, model: LLModel): Flow<String> {
-            return flowOf("Anthropic", " streaming", " response")
-        }
+        override fun executeStreaming(
+            prompt: Prompt,
+            model: LLModel,
+            tools: List<ToolDescriptor>
+        ): Flow<StreamFrame> =
+            flowOf("Anthropic", " streaming", " response").map(StreamFrame::TextDelta)
     }
 
     // Mock client for Anthropic
@@ -72,19 +82,22 @@ class MultipleLLMPromptExecutorMockTest {
             return listOf(Message.Assistant("Gemini response", ResponseMetaInfo.create(mockClock)))
         }
 
-        override fun executeStreaming(prompt: Prompt, model: LLModel): Flow<String> {
-            return flowOf("Gemini", " streaming", " response")
-        }
+        override fun executeStreaming(
+            prompt: Prompt,
+            model: LLModel,
+            tools: List<ToolDescriptor>
+        ): Flow<StreamFrame> =
+            flowOf("Gemini", " streaming", " response").map(StreamFrame::TextDelta)
     }
 
-    private lateinit var executor: DefaultMultiLLMPromptExecutor
+    private lateinit var executor: MultiLLMPromptExecutor
 
     @BeforeTest
     fun initializeExecutor() {
-        executor = DefaultMultiLLMPromptExecutor(
-            openAIClient = MockOpenAILLMClient(),
-            anthropicClient = MockAnthropicLLMClient(),
-            googleClient = MockGoogleLLMClient()
+        executor = MultiLLMPromptExecutor(
+            LLMProvider.OpenAI to MockOpenAILLMClient(),
+            LLMProvider.Anthropic to MockAnthropicLLMClient(),
+            LLMProvider.Google to MockGoogleLLMClient(),
         )
     }
 
@@ -95,7 +108,7 @@ class MultipleLLMPromptExecutorMockTest {
             user("What is the capital of France?")
         }
 
-        val response = executor.execute(prompt = prompt, model = OpenAIModels.Chat.GPT4o)
+        val response = executor.execute(prompt = prompt, model = OpenAIModels.Chat.GPT4o).single()
 
         assertEquals(
             "OpenAI response",
@@ -111,12 +124,13 @@ class MultipleLLMPromptExecutorMockTest {
             user("What is the capital of France?")
         }
 
-        val response = executor.execute(prompt = prompt, model = AnthropicModels.Sonnet_3_7)
+        val response = executor.execute(prompt = prompt, model = AnthropicModels.Opus_4_6).single()
 
         assertEquals(
             "Anthropic response",
             response.content,
-            "Response should be from Anthropic client")
+            "Response should be from Anthropic client"
+        )
     }
 
     @Test
@@ -126,12 +140,13 @@ class MultipleLLMPromptExecutorMockTest {
             user("What is the capital of France?")
         }
 
-        val response = executor.execute(prompt = prompt, model = GoogleModels.Gemini2_0Flash)
+        val response = executor.execute(prompt = prompt, model = GoogleModels.Gemini2_0Flash).single()
 
         assertEquals(
             "Gemini response",
             response.content,
-            "Response should be from Google client")
+            "Response should be from Google client"
+        )
     }
 
     @Test
@@ -141,7 +156,9 @@ class MultipleLLMPromptExecutorMockTest {
             user("What is the capital of France?")
         }
 
-        val responseChunks = executor.executeStreaming(prompt, OpenAIModels.Chat.GPT4o).toList()
+        val responseChunks = executor.executeStreaming(prompt, OpenAIModels.Chat.GPT4o)
+            .filterTextOnly()
+            .toList()
 
         assertEquals(3, responseChunks.size, "Response should have three chunks")
         assertEquals(
@@ -158,7 +175,9 @@ class MultipleLLMPromptExecutorMockTest {
             user("What is the capital of France?")
         }
 
-        val responseChunks = executor.executeStreaming(prompt, AnthropicModels.Sonnet_3_7).toList()
+        val responseChunks = executor.executeStreaming(prompt, AnthropicModels.Opus_4_6)
+            .filterTextOnly()
+            .toList()
 
         assertEquals(3, responseChunks.size, "Response should have three chunks")
         assertEquals(
@@ -175,7 +194,9 @@ class MultipleLLMPromptExecutorMockTest {
             user("What is the capital of France?")
         }
 
-        val responseChunks = executor.executeStreaming(prompt, GoogleModels.Gemini2_0Flash).toList()
+        val responseChunks = executor.executeStreaming(prompt, GoogleModels.Gemini2_0Flash)
+            .filterTextOnly()
+            .toList()
 
         assertEquals(3, responseChunks.size, "Response should have three chunks")
         assertEquals(

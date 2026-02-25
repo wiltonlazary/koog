@@ -18,17 +18,9 @@ kotlin {
             }
         }
 
-        commonTest {
+        jvmMain {
             dependencies {
-                implementation(kotlin("test"))
-                implementation(libs.kotlinx.coroutines.test)
-            }
-        }
-
-        jvmTest {
-            dependencies {
-                implementation(kotlin("test-junit5"))
-                implementation(libs.logback.classic)
+                api(libs.kotlinx.coroutines.jdk8)
             }
         }
     }

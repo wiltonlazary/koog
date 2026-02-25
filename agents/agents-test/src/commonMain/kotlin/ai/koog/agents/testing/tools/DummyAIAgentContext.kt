@@ -2,23 +2,29 @@
 
 package ai.koog.agents.testing.tools
 
-import ai.koog.agents.core.agent.config.AIAgentConfigBase
-import ai.koog.agents.core.agent.context.AIAgentContextBase
+import ai.koog.agents.core.agent.config.AIAgentConfig
+import ai.koog.agents.core.agent.context.AIAgentContext
+import ai.koog.agents.core.agent.context.AIAgentGraphContextBase
 import ai.koog.agents.core.agent.context.AIAgentLLMContext
 import ai.koog.agents.core.agent.entity.AIAgentStateManager
 import ai.koog.agents.core.agent.entity.AIAgentStorage
 import ai.koog.agents.core.agent.entity.AIAgentStorageKey
+import ai.koog.agents.core.agent.execution.AgentExecutionInfo
 import ai.koog.agents.core.annotation.InternalAgentsApi
 import ai.koog.agents.core.dsl.builder.BaseBuilder
 import ai.koog.agents.core.environment.AIAgentEnvironment
-import ai.koog.agents.core.feature.AIAgentFeature
-import ai.koog.agents.core.feature.AIAgentPipeline
+import ai.koog.agents.core.feature.pipeline.AIAgentGraphPipeline
+import ai.koog.prompt.dsl.Prompt
+import ai.koog.prompt.executor.ollama.client.OllamaModels
 import ai.koog.prompt.message.Message
 import org.jetbrains.annotations.TestOnly
 import kotlin.reflect.KType
+import kotlin.reflect.typeOf
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 /**
- * A mock implementation of the [AIAgentContextBase] interface, used for testing purposes.
+ * A mock implementation of the [AIAgentContext] interface, used for testing purposes.
  *
  * @constructor Creates a new instance of `DummyAIAgentContext` using a predefined
  * `AIAgentContextMockBuilder`.
@@ -27,8 +33,10 @@ import kotlin.reflect.KType
 @TestOnly
 public class DummyAIAgentContext(
     private val builder: AIAgentContextMockBuilder,
-    override val id: String = "DummyAgentId",
-) : AIAgentContextBase {
+    override val agentId: String = "DummyAgentId",
+) : AIAgentGraphContextBase {
+    override val parentContext: AIAgentGraphContextBase? = null
+
     /**
      * Indicates whether a Language Learning Model (LLM) is defined in the current context.
      *
@@ -37,6 +45,7 @@ public class DummyAIAgentContext(
      * capabilities are available.
      */
     public val isLLMDefined: Boolean = builder.llm != null
+
     /**
      * Indicates whether the environment for the agent context is defined.
      *
@@ -50,26 +59,29 @@ public class DummyAIAgentContext(
     private var _environment: AIAgentEnvironment? = builder.environment
     private var _agentInput: Any? = builder.agentInput
     private var _agentInputType: KType? = builder.agentInputType
-    private var _config: AIAgentConfigBase? = builder.config
+    private var _config: AIAgentConfig? = builder.config
     private var _llm: AIAgentLLMContext? = builder.llm
     private var _stateManager: AIAgentStateManager? = builder.stateManager
     private var _storage: AIAgentStorage? = builder.storage
     private var _runId: String? = builder.runId
-    private var _strategyId: String? = builder.strategyId
+    private var _strategyName: String? = builder.strategyName
+    private var _executionInfo: AgentExecutionInfo? = builder.executionInfo
 
     @OptIn(InternalAgentsApi::class)
-    private var _pipeline: AIAgentPipeline = AIAgentPipeline()
+    private var _pipeline: AIAgentGraphPipeline = AIAgentGraphPipeline(
+        _config ?: AIAgentConfig(Prompt.Empty, OllamaModels.Meta.LLAMA_3_2, 100)
+    )
 
     override val environment: AIAgentEnvironment
         get() = _environment ?: throw NotImplementedError("Environment is not mocked")
 
-    override val agentInput: Any?
+    override val agentInput: Any
         get() = _agentInput ?: throw NotImplementedError("Agent input is not mocked")
 
     override val agentInputType: KType
         get() = _agentInputType ?: throw NotImplementedError("Agent input type is not mocked")
 
-    override val config: AIAgentConfigBase
+    override val config: AIAgentConfig
         get() = _config ?: throw NotImplementedError("Config is not mocked")
 
     override val llm: AIAgentLLMContext
@@ -85,17 +97,23 @@ public class DummyAIAgentContext(
         get() = _runId ?: throw NotImplementedError("Session UUID is not mocked")
 
     override val strategyName: String
-        get() = _strategyId ?: throw NotImplementedError("Strategy ID is not mocked")
+        get() = _strategyName ?: throw NotImplementedError("Strategy name is not mocked")
 
     @OptIn(InternalAgentsApi::class)
-    override val pipeline: AIAgentPipeline
+    override val pipeline: AIAgentGraphPipeline
         get() = _pipeline
+
+    override var executionInfo: AgentExecutionInfo
+        get() = _executionInfo ?: throw NotImplementedError("Execution info is not mocked")
+        set(value) {
+            _executionInfo = value
+        }
 
     override fun store(key: AIAgentStorageKey<*>, value: Any) {
         throw NotImplementedError("store() is not supported for mock")
     }
 
-    override fun <T> get(key: AIAgentStorageKey<*>): T? {
+    override fun <T> get(key: AIAgentStorageKey<*>): T {
         throw NotImplementedError("get() is not supported for mock")
     }
 
@@ -103,26 +121,39 @@ public class DummyAIAgentContext(
         throw NotImplementedError("remove() is not supported for mock")
     }
 
-    override fun <Feature : Any> feature(key: AIAgentStorageKey<Feature>): Feature? =
-        throw NotImplementedError("feature() getting in runtime is not supported for mock")
-
-    override fun <Feature : Any> feature(feature: AIAgentFeature<*, Feature>): Feature? =
-        throw NotImplementedError("feature()  getting in runtime is not supported for mock")
-
     override suspend fun getHistory(): List<Message> = emptyList()
 
+    /**
+     * Creates a new instance of `AIAgentContextBase` with the specified parameters,
+     * copying the properties from the current instance with the provided updates.
+     *
+     * @param environment The environment in which the AI agent operates, allowing interaction with external systems.
+     * @param agentInput The input object provided to the AI agent, representing data or context for the agent to process.
+     * @param agentInputType The type of the agent input, used to interpret the structure or nature of the input.
+     * @param config The configuration settings for the AI agent, such as model specifics and operational limits.
+     * @param llm The language model context used by the AI agent for generating responses or processing input.
+     * @param stateManager The state management associated with the AI agent, responsible for tracking execution state and history.
+     * @param storage A storage mechanism for the AI agent, enabling persistence of key-value information.
+     * @param runId A unique identifier for the current execution or operational instance of the AI agent.
+     * @param strategyName The name of the strategy used during the AI agent's execution cycle.
+     * @param pipeline The pipeline configuration used by the AI agent to define the processing steps.
+     * @return An instance of `AIAgentContextBase` with the updated parameters and copied configurations.
+     */
     override fun copy(
         environment: AIAgentEnvironment,
+        agentId: String,
         agentInput: Any?,
         agentInputType: KType,
-        config: AIAgentConfigBase,
+        config: AIAgentConfig,
         llm: AIAgentLLMContext,
         stateManager: AIAgentStateManager,
         storage: AIAgentStorage,
         runId: String,
-        strategyId: String,
-        pipeline: AIAgentPipeline
-    ): AIAgentContextBase = DummyAIAgentContext(
+        strategyName: String,
+        pipeline: AIAgentGraphPipeline,
+        executionInfo: AgentExecutionInfo,
+        parentContext: AIAgentGraphContextBase?,
+    ): AIAgentGraphContextBase = DummyAIAgentContext(
         builder.copy(
             environment = environment,
             agentInput = agentInput,
@@ -132,31 +163,32 @@ public class DummyAIAgentContext(
             stateManager = stateManager,
             storage = storage,
             runId = runId,
-            strategyId = strategyId,
+            strategyName = strategyName,
+            executionInfo = executionInfo
         ),
     )
 
-    override suspend fun fork(): AIAgentContextBase {
-        throw NotImplementedError("fork() is not supported for mock")
+    override suspend fun fork(): AIAgentGraphContextBase {
+        throw NotImplementedError("Forking is not supported for mock")
     }
 
-    override suspend fun replace(context: AIAgentContextBase) {
-        throw NotImplementedError("replace() is not supported for mock")
+    override suspend fun replace(context: AIAgentContext) {
+        throw NotImplementedError("Forking is not supported for mock")
     }
 }
 
 /**
- * A base interface for building mock implementations of the [AIAgentContextBase] interface.
+ * A base interface for building mock implementations of the [AIAgentContext] interface.
  *
  * This interface provides configurable properties and methods for creating a mock
  * AI agent context, enabling the customization of its environment, input, configuration,
  * state management, and more. It is intended for use in testing scenarios and allows
  * for the creation of testable mock instances of AI agent contexts.
  *
- * Extends the [BaseBuilder] interface for constructing instances of type [AIAgentContextBase].
+ * Extends the [BaseBuilder] interface for constructing instances of type [AIAgentContext].
  */
 @TestOnly
-public interface AIAgentContextMockBuilderBase : BaseBuilder<AIAgentContextBase> {
+public interface AIAgentContextMockBuilderBase : BaseBuilder<AIAgentContext> {
     /**
      * Represents the environment used by the AI agent to interact with external systems.
      *
@@ -172,6 +204,7 @@ public interface AIAgentContextMockBuilderBase : BaseBuilder<AIAgentContextBase>
      * @see AIAgentEnvironment
      */
     public var environment: AIAgentEnvironment?
+
     /**
      * Represents the input to be used by the AI agent during its execution.
      * This variable can be set to define specific data or context relevant to the agent's task.
@@ -187,14 +220,15 @@ public interface AIAgentContextMockBuilderBase : BaseBuilder<AIAgentContextBase>
     /**
      * Specifies the configuration for the AI agent.
      *
-     * This property allows setting an instance of [AIAgentConfigBase], which defines various parameters
+     * This property allows setting an instance of [AIAgentConfig], which defines various parameters
      * and settings for the AI agent, such as the model, prompt structure, execution strategies, and constraints.
      * It provides the core configuration required for the agent's setup and behavior.
      *
      * If null, the configuration will not be explicitly defined, and the agent may rely on default or externally
      * supplied configurations.
      */
-    public var config: AIAgentConfigBase?
+    public var config: AIAgentConfig?
+
     /**
      * Represents the LLM context associated with an AI agent during testing scenarios.
      * This variable is used to configure and manage the context for an AI agent's
@@ -207,6 +241,7 @@ public interface AIAgentContextMockBuilderBase : BaseBuilder<AIAgentContextBase>
      * @see AIAgentLLMContext
      */
     public var llm: AIAgentLLMContext?
+
     /**
      * Represents an optional state manager for an AI agent in the context of building its mock environment.
      * The `stateManager` is responsible for maintaining and managing the internal state of the agent in
@@ -217,6 +252,7 @@ public interface AIAgentContextMockBuilderBase : BaseBuilder<AIAgentContextBase>
      * in the mock context.
      */
     public var stateManager: AIAgentStateManager?
+
     /**
      * Represents a concurrent-safe key-value storage used for managing data within the context of mock
      * AI agent construction. This property typically holds an optional instance of [AIAgentStorage],
@@ -229,6 +265,7 @@ public interface AIAgentContextMockBuilderBase : BaseBuilder<AIAgentContextBase>
      * internal states of the agent.
      */
     public var storage: AIAgentStorage?
+
     /**
      * Represents the unique identifier associated with the session in the mock builder context.
      *
@@ -236,13 +273,23 @@ public interface AIAgentContextMockBuilderBase : BaseBuilder<AIAgentContextBase>
      * run to a specific context or operation.
      */
     public var runId: String?
+
     /**
      * Represents the identifier of a strategy to be used within the context of an AI agent.
      *
      * This variable allows specifying or retrieving the unique identifier associated with a
      * particular strategy. It can be null if no strategy is defined or required.
      */
-    public var strategyId: String?
+    public var strategyName: String?
+
+    /**
+     * Represents execution-specific context information for the mock AI agent builder.
+     * This variable allows tracking and observability of the agent's execution flow.
+     *
+     * By leveraging the properties defined in [AgentExecutionInfo], this information
+     * aids in linking, tracing, and managing execution paths throughout the agent's lifecycle.
+     */
+    public var executionInfo: AgentExecutionInfo?
 
     /**
      * Creates and returns a copy of the current instance of `AIAgentContextMockBuilderBase`.
@@ -253,23 +300,24 @@ public interface AIAgentContextMockBuilderBase : BaseBuilder<AIAgentContextBase>
         environment: AIAgentEnvironment? = this.environment,
         agentInput: Any? = this.agentInput,
         agentInputType: KType? = this.agentInputType,
-        config: AIAgentConfigBase? = this.config,
+        config: AIAgentConfig? = this.config,
         llm: AIAgentLLMContext? = this.llm,
         stateManager: AIAgentStateManager? = this.stateManager,
         storage: AIAgentStorage? = this.storage,
         runId: String? = this.runId,
-        strategyId: String? = this.strategyId,
+        strategyName: String? = this.strategyName,
+        executionInfo: AgentExecutionInfo? = this.executionInfo,
     ): AIAgentContextMockBuilderBase
 
     /**
-     * Builds and returns an instance of [AIAgentContextBase] based on the current properties
+     * Builds and returns an instance of [AIAgentContext] based on the current properties
      * of the builder. This method creates a finalized AI agent context, integrating all the
      * specified configurations, environment settings, and components into a coherent context
      * object ready for use.
      *
-     * @return A fully constructed [AIAgentContextBase] instance representing the configured agent context.
+     * @return A fully constructed [AIAgentContext] instance representing the configured agent context.
      */
-    override fun build(): AIAgentContextBase
+    override fun build(): AIAgentContext
 }
 
 /**
@@ -278,7 +326,7 @@ public interface AIAgentContextMockBuilderBase : BaseBuilder<AIAgentContextBase>
  * This class is intended for use in testing scenarios and extends `AIAgentContextMockBuilderBase`.
  */
 @TestOnly
-public class AIAgentContextMockBuilder() : AIAgentContextMockBuilderBase {
+public class AIAgentContextMockBuilder : AIAgentContextMockBuilderBase {
     /**
      * Represents the AI agent's environment in which the context is being executed.
      *
@@ -291,31 +339,33 @@ public class AIAgentContextMockBuilder() : AIAgentContextMockBuilderBase {
      * @see AIAgentEnvironment
      */
     override var environment: AIAgentEnvironment? = null
+
     /**
      * Represents the agent's input data used in constructing or testing the agent's context.
      *
      * This property is optional and can be null, indicating that no specific input is provided for the agent.
-     * It is utilized during the construction or copying of an agent's context to define the data the agent operates on.
+     * It is used during the construction or copying of an agent's context to define the data the agent operates on.
      */
-    override var agentInput: Any? = null
+    override var agentInput: Any? = "test-input-default"
 
     /**
      * Represents the [KType] of the [agentInput].
      */
-    override var agentInputType: KType? = null
+    override var agentInputType: KType? = typeOf<String>()
 
     /**
      * Represents the AI agent configuration used in the mock builder.
      *
      * This property holds the agent's configuration, which may include the parameters for prompts,
      * the language model to be used, iteration limits, and strategies for handling missing tools.
-     * It is utilized in constructing or copying an AI agent context during testing or mock setup.
+     * It is used in constructing or copying an AI agent context during testing or mock setup.
      *
-     * The configuration, represented by [AIAgentConfigBase], can be modified or replaced
+     * The configuration, represented by [AIAgentConfig], can be modified or replaced
      * depending on the requirements of the mock or testing scenario. A `null` value indicates
      * the absence of a specific configuration.
      */
-    override var config: AIAgentConfigBase? = null
+    override var config: AIAgentConfig? = null
+
     /**
      * Represents the context for accessing and managing an AI agent's LLM (Large Language Model) configuration
      * and behavior. The `llm` property allows you to define or override the LLM context for the agent,
@@ -323,9 +373,10 @@ public class AIAgentContextMockBuilder() : AIAgentContextMockBuilderBase {
      *
      * Can be used for dependency injection, mock testing, or modifying the LLM behavior dynamically during
      * runtime. If set to `null`, it indicates that no specific LLM context is defined, and defaults or
-     * fallback mechanisms may be utilized by the containing class.
+     * fallback mechanisms may be used by the containing class.
      */
     override var llm: AIAgentLLMContext? = null
+
     /**
      * An overrideable property for managing the agent's state using an instance of [AIAgentStateManager].
      *
@@ -341,6 +392,7 @@ public class AIAgentContextMockBuilder() : AIAgentContextMockBuilderBase {
      * specific `AIAgentStateManager` instance for managing agent state in custom scenarios.
      */
     override var stateManager: AIAgentStateManager? = null
+
     /**
      * Represents a concurrent-safe key-value storage instance for an AI agent.
      *
@@ -348,10 +400,11 @@ public class AIAgentContextMockBuilder() : AIAgentContextMockBuilderBase {
      * handling of typed keys and respective values in a thread-safe manner within the agent context.
      * The storage can be used to store, retrieve, or manage custom data uniquely identified by specific keys.
      *
-     * It can be configured or overridden during the agent context setup or through subsequent modifications
+     * It can be configured or overridden during the agent context setup or through later modifications
      * to the context builder. If not provided, the default value remains `null`.
      */
     override var storage: AIAgentStorage? = null
+
     /**
      * Defines the unique identifier for the session context within the agent's lifecycle.
      * This property can be used to correlate and differentiate multiple sessions for the same agent
@@ -359,7 +412,9 @@ public class AIAgentContextMockBuilder() : AIAgentContextMockBuilderBase {
      *
      * The `runId` can be null, indicating that the session has not been associated with an identifier.
      */
-    override var runId: String? = null
+    @OptIn(ExperimentalUuidApi::class)
+    override var runId: String? = "test-run-id-${Uuid.random()}"
+
     /**
      * Represents the identifier for the strategy to be used in the agent context.
      *
@@ -369,7 +424,16 @@ public class AIAgentContextMockBuilder() : AIAgentContextMockBuilderBase {
      *
      * Can be null if a strategy is not explicitly defined or required.
      */
-    override var strategyId: String? = null
+    override var strategyName: String? = "test-strategy-default"
+
+    /**
+     * Represents execution-specific context information for the mock AI agent builder.
+     * This variable allows tracking and observability of the agent's execution flow.
+     *
+     * By leveraging the properties defined in [AgentExecutionInfo], this information
+     * aids in linking, tracing, and managing execution paths throughout the agent's lifecycle.
+     */
+    override var executionInfo: AgentExecutionInfo? = null
 
     /**
      * Creates and returns a new copy of the current `AIAgentContextMockBuilder` instance.
@@ -381,12 +445,13 @@ public class AIAgentContextMockBuilder() : AIAgentContextMockBuilderBase {
         environment: AIAgentEnvironment?,
         agentInput: Any?,
         agentInputType: KType?,
-        config: AIAgentConfigBase?,
+        config: AIAgentConfig?,
         llm: AIAgentLLMContext?,
         stateManager: AIAgentStateManager?,
         storage: AIAgentStorage?,
         runId: String?,
-        strategyId: String?,
+        strategyName: String?,
+        executionInfo: AgentExecutionInfo?,
     ): AIAgentContextMockBuilder {
         return AIAgentContextMockBuilder().also {
             it.environment = environment
@@ -397,7 +462,8 @@ public class AIAgentContextMockBuilder() : AIAgentContextMockBuilderBase {
             it.stateManager = stateManager
             it.storage = storage
             it.runId = runId
-            it.strategyId = strategyId
+            it.strategyName = strategyName
+            it.executionInfo = executionInfo
         }
     }
 
@@ -462,7 +528,7 @@ public class AIAgentContextMockBuilder() : AIAgentContextMockBuilderBase {
                  *
                  * @return A string in the format `DummyProxy<name>`.
                  */
-                override fun toString() = "DummyProxy<${name}>"
+                override fun toString() = "DummyProxy<$name>"
 
                 /**
                  * Checks whether this instance is equal to the specified object.
@@ -483,7 +549,7 @@ public class AIAgentContextMockBuilder() : AIAgentContextMockBuilderBase {
                  * @throws IllegalStateException This function always throws an exception indicating unimplemented property access.
                  */
                 @Suppress("UNUSED_PARAMETER")
-                operator fun get(propertyName: String): Any? {
+                operator fun get(propertyName: String): Any {
                     error("Unimplemented property access: $name.$propertyName")
                 }
 
@@ -498,7 +564,7 @@ public class AIAgentContextMockBuilder() : AIAgentContextMockBuilderBase {
                  * @return This function does not return a value as it throws an error instead.
                  */
                 @Suppress("UNUSED_PARAMETER")
-                fun invoke(methodName: String, vararg args: Any?): Any? {
+                fun invoke(methodName: String, vararg args: Any?): Any {
                     error("Unimplemented method call: $name.$methodName(${args.joinToString()})")
                 }
             } as T

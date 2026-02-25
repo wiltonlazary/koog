@@ -13,6 +13,9 @@ kotlin {
         commonMain {
             dependencies {
                 api(libs.kotlinx.serialization.json)
+                api(project(":rag:rag-base"))
+                implementation(project(":prompt:prompt-markdown"))
+                implementation(project(":prompt:prompt-xml"))
             }
         }
 
@@ -33,6 +36,7 @@ kotlin {
             dependencies {
                 implementation(kotlin("test-junit5"))
                 implementation(libs.junit.jupiter.params)
+                implementation(libs.assertj.core)
             }
         }
     }

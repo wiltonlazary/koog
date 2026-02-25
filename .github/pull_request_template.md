@@ -1,25 +1,28 @@
-Thank you for opening a pull request! Please add a brief description of the proposed change here.
+<!--
+PR title should follow Conventional Commits format:
+  type(scope): description
 
-Also, please tick the appropriate points in the checklist below.
+For breaking changes, append ! after type/scope:
+  type(scope)!: description
+
+Examples:
+  feat(agents): add streaming response node
+  fix(prompt): handle null responses in PromptExecutor
+  refactor(agents)!: remove deprecated methods from Tool
+
+See CONTRIBUTING.md for more details
+-->
+
+Describe what this PR changes and why.
 
 
----
+<!-- Include BREAKING section below only if this PR introduces breaking changes. Otherwise, delete it. -->
+BREAKING:
+*
 
-#### Type of the change
-- [ ] New feature
-- [ ] Bug fix
-- [ ] Documentation fix
-- [ ] Tests improvement
+<!-- Include DEPRECATED section below only if this PR deprecates any public APIs. Otherwise, delete it. -->
+DEPRECATED:
+*
 
-#### Checklist for all pull requests
-- [ ] The pull request has a description of the proposed change
-- [ ] I read the [Contributing Guidelines](https://github.com/JetBrains/koog/blob/main/CONTRIBUTING.md) before opening the pull request
-- [ ] The pull request uses **`develop`** as the base branch
-- [ ] Tests for the changes have been added
-- [ ] All new and existing tests passed
-
-##### Additional steps for pull requests adding a new feature
-- [ ] An issue describing the proposed change exists
-- [ ] The pull request includes a link to the issue
-- [ ] The change was discussed and approved in the issue
-- [ ] Docs have been added / updated
+<!-- Include references to related issues below, e.g., closes #1, closes KG-1. Otherwise, delete it. -->
+closes

@@ -1,16 +1,16 @@
 package ai.koog.agents.core.dsl.builder
 
-import ai.koog.agents.core.agent.context.AIAgentContextBase
-import ai.koog.agents.core.utils.Option
+import ai.koog.agents.core.agent.context.AIAgentGraphContextBase
 import ai.koog.agents.core.agent.entity.AIAgentEdge
 import ai.koog.agents.core.agent.entity.AIAgentNodeBase
+import ai.koog.agents.core.utils.Option
 
 /**
  * Marks a function as a transformation specific to edges within the AI agent's DSL
  * to ensure its proper highlighting.
  */
 @DslMarker
-@Target(AnnotationTarget.FUNCTION)
+@Target(AnnotationTarget.CLASS, AnnotationTarget.FUNCTION)
 public annotation class EdgeTransformationDslMarker
 
 /**
@@ -26,7 +26,7 @@ public annotation class EdgeTransformationDslMarker
  * @property edgeIntermediateBuilder The intermediate configuration used for building the edge. It includes
  * the source and target nodes, as well as the functionality for processing the output of the source node.
  */
-public class AIAgentEdgeBuilder<IncomingOutput, OutgoingInput, CompatibleOutput: OutgoingInput> internal constructor(
+public class AIAgentEdgeBuilder<IncomingOutput, OutgoingInput, CompatibleOutput : OutgoingInput> internal constructor(
     private val edgeIntermediateBuilder: AIAgentEdgeBuilderIntermediate<IncomingOutput, CompatibleOutput, OutgoingInput>,
 ) : BaseBuilder<AIAgentEdge<IncomingOutput, OutgoingInput>> {
     override fun build(): AIAgentEdge<IncomingOutput, OutgoingInput> {
@@ -54,10 +54,11 @@ public class AIAgentEdgeBuilder<IncomingOutput, OutgoingInput, CompatibleOutput:
  * the originating node's output into an intermediate representation
  * or filtering the flow based on specific conditions.
  */
+@EdgeTransformationDslMarker
 public class AIAgentEdgeBuilderIntermediate<IncomingOutput, IntermediateOutput, OutgoingInput> internal constructor(
     internal val fromNode: AIAgentNodeBase<*, IncomingOutput>,
     internal val toNode: AIAgentNodeBase<OutgoingInput, *>,
-    internal val forwardOutputComposition: suspend (AIAgentContextBase, IncomingOutput) -> Option<IntermediateOutput>
+    internal val forwardOutputComposition: suspend (AIAgentGraphContextBase, IncomingOutput) -> Option<IntermediateOutput>
 ) {
     /**
      * Filters the intermediate outputs of the [ai.koog.agents.core.agent.entity.AIAgentNode] based on a specified condition.
@@ -69,7 +70,7 @@ public class AIAgentEdgeBuilderIntermediate<IncomingOutput, IntermediateOutput, 
      */
     @EdgeTransformationDslMarker
     public infix fun onCondition(
-        block: suspend AIAgentContextBase.(output: IntermediateOutput) -> Boolean
+        block: suspend AIAgentGraphContextBase.(output: IntermediateOutput) -> Boolean
     ): AIAgentEdgeBuilderIntermediate<IncomingOutput, IntermediateOutput, OutgoingInput> {
         return AIAgentEdgeBuilderIntermediate(
             fromNode = fromNode,
@@ -77,7 +78,7 @@ public class AIAgentEdgeBuilderIntermediate<IncomingOutput, IntermediateOutput, 
             forwardOutputComposition = { ctx, output ->
                 forwardOutputComposition(ctx, output)
                     .filter { transOutput -> ctx.block(transOutput) }
-           },
+            },
         )
     }
 
@@ -90,7 +91,7 @@ public class AIAgentEdgeBuilderIntermediate<IncomingOutput, IntermediateOutput, 
      */
     @EdgeTransformationDslMarker
     public infix fun <NewIntermediateOutput> transformed(
-        block: suspend AIAgentContextBase.(IntermediateOutput) -> NewIntermediateOutput
+        block: suspend AIAgentGraphContextBase.(IntermediateOutput) -> NewIntermediateOutput
     ): AIAgentEdgeBuilderIntermediate<IncomingOutput, NewIntermediateOutput, OutgoingInput> {
         return AIAgentEdgeBuilderIntermediate(
             fromNode = fromNode,

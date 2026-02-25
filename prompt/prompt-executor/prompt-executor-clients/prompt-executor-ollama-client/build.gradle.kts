@@ -13,8 +13,10 @@ kotlin {
         commonMain {
             dependencies {
                 api(project(":agents:agents-tools"))
+                api(project(":http-client:http-client-core"))
                 api(project(":prompt:prompt-llm"))
                 api(project(":prompt:prompt-model"))
+                api(project(":prompt:prompt-tokenizer"))
                 api(project(":agents:agents-tools"))
                 api(project(":prompt:prompt-executor:prompt-executor-model"))
                 api(project(":prompt:prompt-executor:prompt-executor-clients"))
@@ -26,36 +28,50 @@ kotlin {
                 api(libs.kotlinx.coroutines.core)
                 api(libs.ktor.client.content.negotiation)
                 api(libs.ktor.serialization.kotlinx.json)
-                api(libs.ktor.client.cio)
                 implementation(libs.oshai.kotlin.logging)
             }
         }
 
-        jsMain {
+        androidUnitTest {
             dependencies {
-                api(libs.ktor.client.js)
+                implementation(libs.ktor.client.cio)
             }
         }
 
+        appleTest {
+            dependencies {
+                implementation(libs.ktor.client.darwin)
+            }
+        }
+
+        jsTest {
+            dependencies {
+                implementation(libs.ktor.client.js)
+            }
+        }
+
+        wasmJsTest {
+            dependencies {
+                implementation(libs.ktor.client.cio)
+            }
+        }
 
         commonTest {
             dependencies {
-                implementation(kotlin("test"))
+                implementation(project(":test-utils"))
                 implementation(project(":agents:agents-features:agents-features-event-handler"))
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.coroutines.test)
+                implementation(libs.ktor.client.mock)
             }
         }
 
         jvmTest {
             dependencies {
-                implementation(kotlin("test-junit5"))
-                implementation(kotlin("test-junit5"))
-                implementation(libs.kotlinx.coroutines.test)
                 implementation(project(":agents:agents-core"))
                 implementation(project(":agents:agents-features:agents-features-event-handler"))
                 implementation(project(":agents:agents-features:agents-features-trace"))
-                implementation(project(":integration-tests"))
+                implementation(libs.ktor.client.cio)
             }
         }
     }

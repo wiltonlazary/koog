@@ -1,15 +1,16 @@
 package ai.koog.agents.core.dsl.builder
 
-import ai.koog.agents.core.agent.config.AIAgentConfigBase
-import ai.koog.agents.core.agent.context.AIAgentContextBase
+import ai.koog.agents.core.agent.config.AIAgentConfig
+import ai.koog.agents.core.agent.context.AIAgentContext
+import ai.koog.agents.core.agent.context.AIAgentGraphContextBase
 import ai.koog.agents.core.agent.context.AIAgentLLMContext
 import ai.koog.agents.core.agent.entity.AIAgentStateManager
 import ai.koog.agents.core.agent.entity.AIAgentStorage
 import ai.koog.agents.core.agent.entity.AIAgentStorageKey
+import ai.koog.agents.core.agent.execution.AgentExecutionInfo
 import ai.koog.agents.core.annotation.InternalAgentsApi
 import ai.koog.agents.core.environment.AIAgentEnvironment
-import ai.koog.agents.core.feature.AIAgentFeature
-import ai.koog.agents.core.feature.AIAgentPipeline
+import ai.koog.agents.core.feature.pipeline.AIAgentGraphPipeline
 import ai.koog.prompt.message.Message
 import kotlin.reflect.KType
 
@@ -26,21 +27,25 @@ import kotlin.reflect.KType
  */
 @OptIn(InternalAgentsApi::class)
 public class AIAgentParallelNodesMergeContext<Input, Output>(
-    private val underlyingContextBase: AIAgentContextBase,
+    private val underlyingContextBase: AIAgentGraphContextBase,
     public val results: List<ParallelResult<Input, Output>>,
-) : AIAgentContextBase {
+) : AIAgentGraphContextBase {
+    override val parentContext: AIAgentGraphContextBase = underlyingContextBase
+    override var executionInfo: AgentExecutionInfo = underlyingContextBase.executionInfo
+
     // Delegate all properties to the underlying context
     override val environment: AIAgentEnvironment get() = underlyingContextBase.environment
-    override val id: String get() = underlyingContextBase.id
+    override val agentId: String get() = underlyingContextBase.agentId
     override val agentInput: Any? get() = underlyingContextBase.agentInput
     override val agentInputType: KType get() = underlyingContextBase.agentInputType
-    override val config: AIAgentConfigBase get() = underlyingContextBase.config
+
+    override val config: AIAgentConfig get() = underlyingContextBase.config
     override val llm: AIAgentLLMContext get() = underlyingContextBase.llm
     override val stateManager: AIAgentStateManager get() = underlyingContextBase.stateManager
     override val storage: AIAgentStorage get() = underlyingContextBase.storage
     override val runId: String get() = underlyingContextBase.runId
     override val strategyName: String get() = underlyingContextBase.strategyName
-    override val pipeline: AIAgentPipeline get() = underlyingContextBase.pipeline
+    override val pipeline: AIAgentGraphPipeline get() = underlyingContextBase.pipeline
 
     override fun store(key: AIAgentStorageKey<*>, value: Any) {
         underlyingContextBase.store(key, value)
@@ -54,31 +59,26 @@ public class AIAgentParallelNodesMergeContext<Input, Output>(
         return underlyingContextBase.remove(key)
     }
 
-    // Delegate all methods to the underlying context
-    override fun <Feature : Any> feature(key: AIAgentStorageKey<Feature>): Feature? =
-        underlyingContextBase.feature(key)
-
-
-    override fun <Feature : Any> feature(feature: AIAgentFeature<*, Feature>): Feature? =
-        underlyingContextBase.feature(feature)
-
-    override fun <Feature : Any> featureOrThrow(feature: AIAgentFeature<*, Feature>): Feature =
-        underlyingContextBase.featureOrThrow(feature)
-
     override suspend fun getHistory(): List<Message> = underlyingContextBase.getHistory()
 
+    /**
+     * Creates a copy of the current AIAgentContextBase object with the specified parameters.
+     */
     override fun copy(
         environment: AIAgentEnvironment,
+        agentId: String,
         agentInput: Any?,
         agentInputType: KType,
-        config: AIAgentConfigBase,
+        config: AIAgentConfig,
         llm: AIAgentLLMContext,
         stateManager: AIAgentStateManager,
         storage: AIAgentStorage,
         runId: String,
-        strategyId: String,
-        pipeline: AIAgentPipeline
-    ): AIAgentContextBase = underlyingContextBase.copy(
+        strategyName: String,
+        pipeline: AIAgentGraphPipeline,
+        executionInfo: AgentExecutionInfo,
+        parentContext: AIAgentGraphContextBase?,
+    ): AIAgentGraphContextBase = underlyingContextBase.copy(
         environment = environment,
         agentInput = agentInput,
         agentInputType = agentInputType,
@@ -87,13 +87,28 @@ public class AIAgentParallelNodesMergeContext<Input, Output>(
         stateManager = stateManager,
         storage = storage,
         runId = runId,
-        strategyId = strategyId,
-        pipeline = pipeline
+        strategyName = strategyName,
+        pipeline = pipeline,
+        executionInfo = executionInfo,
+        parentContext = parentContext,
     )
 
-    override suspend fun fork(): AIAgentContextBase = underlyingContextBase.fork()
+    /**
+     * Creates a forked instance of the underlying agent context, resulting in a new independent
+     * copy of the `AIAgentContextBase`. This can be used to create isolated contexts for
+     * parallel or independent operations.
+     *
+     * @return A new instance of `AIAgentContextBase` that is a fork of the current context.
+     */
+    override suspend fun fork(): AIAgentGraphContextBase = underlyingContextBase.fork()
 
-    override suspend fun replace(context: AIAgentContextBase): Unit = underlyingContextBase.replace(context)
+    /**
+     * Replaces the current context with the specified context in the underlying context base.
+     *
+     * @param context The new context to replace the current one in the underlying context base.
+     * @return Unit
+     */
+    override suspend fun replace(context: AIAgentContext): Unit = underlyingContextBase.replace(context)
 
     /**
      * Selects a result based on a predicate.
@@ -116,7 +131,9 @@ public class AIAgentParallelNodesMergeContext<Input, Output>(
      *         value as determined by the comparison function.
      * @throws NoSuchElementException if the results list is empty.
      */
-    public suspend fun <T : Comparable<T>> selectByMax(function: suspend (Output) -> T): ParallelNodeExecutionResult<Output> {
+    public suspend fun <T : Comparable<T>> selectByMax(
+        function: suspend (Output) -> T
+    ): ParallelNodeExecutionResult<Output> {
         return results.maxBy { function(it.nodeResult.output) }
             .let { ParallelNodeExecutionResult(it.nodeResult.output, it.nodeResult.context) }
     }
@@ -130,7 +147,10 @@ public class AIAgentParallelNodesMergeContext<Input, Output>(
      */
     public suspend fun selectByIndex(selectIndex: suspend (List<Output>) -> Int): ParallelNodeExecutionResult<Output> {
         val indexOfBest = selectIndex(results.map { it.nodeResult.output })
-        return ParallelNodeExecutionResult(results[indexOfBest].nodeResult.output, results[indexOfBest].nodeResult.context)
+        return ParallelNodeExecutionResult(
+            results[indexOfBest].nodeResult.output,
+            results[indexOfBest].nodeResult.context
+        )
     }
 
     /**

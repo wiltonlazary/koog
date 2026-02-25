@@ -3,8 +3,7 @@ package ai.koog.agents.core.agent
 import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.agents.features.eventHandler.feature.EventHandler
 import ai.koog.agents.testing.tools.getMockExecutor
-import ai.koog.agents.testing.tools.mockLLMAnswer
-import ai.koog.prompt.llm.OllamaModels
+import ai.koog.prompt.executor.ollama.client.OllamaModels
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -26,16 +25,17 @@ class SingleRunStrategyTests {
             mockLLMAnswer("I don't know how to answer that.").asDefaultResponse
         }
 
-        val agent = AIAgent(
+        val agent = AIAgent.invoke(
             mockLLMApi,
             OllamaModels.Meta.LLAMA_3_2,
-            toolRegistry = testToolRegistry) {
+            toolRegistry = testToolRegistry
+        ) {
             install(EventHandler) {
-                onToolCall { eventContext -> actualToolCalls += eventContext.toolArgs.toString() }
+                onToolCallStarting { eventContext -> actualToolCalls += eventContext.toolArgs.toString() }
             }
         }
 
-        val result = agent.run("Solve task")
+        val result = agent.run("Solve task", null)
 
         assertEquals(0, actualToolCalls.size)
         assertEquals("Task solved!!", result)
@@ -59,13 +59,14 @@ class SingleRunStrategyTests {
         val agent = AIAgent(
             mockLLMApi,
             OllamaModels.Meta.LLAMA_3_2,
-            toolRegistry = testToolRegistry) {
+            toolRegistry = testToolRegistry
+        ) {
             install(EventHandler) {
-                onToolCall { eventContext -> actualToolCalls += eventContext.toolArgs.toString() }
+                onToolCallStarting { eventContext -> actualToolCalls += eventContext.toolArgs.toString() }
             }
         }
 
-        val result = agent.run("Solve task")
+        val result = agent.run("Solve task", null)
 
         assertEquals(1, actualToolCalls.size)
         assertEquals("Tools called!", result)
@@ -88,13 +89,14 @@ class SingleRunStrategyTests {
             mockLLMApi,
             OllamaModels.Meta.LLAMA_3_2,
             strategy = singleRunStrategy(ToolCalls.SEQUENTIAL),
-            toolRegistry = testToolRegistry) {
+            toolRegistry = testToolRegistry
+        ) {
             install(EventHandler) {
-                onToolCall { eventContext -> actualToolCalls += eventContext.toolArgs.toString() }
+                onToolCallStarting { eventContext -> actualToolCalls += eventContext.toolArgs.toString() }
             }
         }
 
-        val result = agent.run("Solve task")
+        val result = agent.run("Solve task", null)
 
         assertEquals(0, actualToolCalls.size)
         assertEquals("Task solved!", result)
@@ -117,13 +119,14 @@ class SingleRunStrategyTests {
             mockLLMApi,
             OllamaModels.Meta.LLAMA_3_2,
             strategy = singleRunStrategy(ToolCalls.PARALLEL),
-            toolRegistry = testToolRegistry) {
+            toolRegistry = testToolRegistry
+        ) {
             install(EventHandler) {
-                onToolCall { eventContext -> actualToolCalls += eventContext.toolArgs.toString() }
+                onToolCallStarting { eventContext -> actualToolCalls += eventContext.toolArgs.toString() }
             }
         }
 
-        val result = agent.run("Solve task")
+        val result = agent.run("Solve task", null)
 
         assertEquals(0, actualToolCalls.size)
         assertEquals("Task solved!", result)
@@ -155,13 +158,14 @@ class SingleRunStrategyTests {
             mockLLMApi,
             OllamaModels.Meta.LLAMA_3_2,
             strategy = singleRunStrategy(ToolCalls.SEQUENTIAL),
-            toolRegistry = testToolRegistry) {
+            toolRegistry = testToolRegistry
+        ) {
             install(EventHandler) {
-                onToolCall { eventContext -> actualToolCalls += eventContext.toolArgs.toString() }
+                onToolCallStarting { eventContext -> actualToolCalls += eventContext.toolArgs.toString() }
             }
         }
 
-        val result = agent.run("Solve task")
+        val result = agent.run("Solve task", null)
 
         assertEquals(3, actualToolCalls.size)
         assertEquals("Tools called!", result)
@@ -193,13 +197,14 @@ class SingleRunStrategyTests {
             mockLLMApi,
             OllamaModels.Meta.LLAMA_3_2,
             strategy = singleRunStrategy(ToolCalls.PARALLEL),
-            toolRegistry = testToolRegistry) {
+            toolRegistry = testToolRegistry
+        ) {
             install(EventHandler) {
-                onToolCall { eventContext -> actualToolCalls += eventContext.toolArgs.toString() }
+                onToolCallStarting { eventContext -> actualToolCalls += eventContext.toolArgs.toString() }
             }
         }
 
-        val result = agent.run("Solve task")
+        val result = agent.run("Solve task", null)
 
         assertEquals(3, actualToolCalls.size)
         assertEquals("Tools called!", result)
@@ -232,13 +237,14 @@ class SingleRunStrategyTests {
             mockLLMApi,
             OllamaModels.Meta.LLAMA_3_2,
             strategy = singleRunStrategy(ToolCalls.SEQUENTIAL),
-            toolRegistry = testToolRegistry) {
+            toolRegistry = testToolRegistry
+        ) {
             install(EventHandler) {
-                onToolCall { eventContext -> actualToolCalls += eventContext.toolArgs.toString() }
+                onToolCallStarting { eventContext -> actualToolCalls += eventContext.toolArgs.toString() }
             }
         }
 
-        val result = agent.run("Solve task")
+        val result = agent.run("Solve task", null)
 
         assertEquals(3, actualToolCalls.size)
         assertEquals(assistantResponse, result)
@@ -271,16 +277,16 @@ class SingleRunStrategyTests {
             mockLLMApi,
             OllamaModels.Meta.LLAMA_3_2,
             strategy = singleRunStrategy(ToolCalls.PARALLEL),
-            toolRegistry = testToolRegistry) {
+            toolRegistry = testToolRegistry
+        ) {
             install(EventHandler) {
-                onToolCall { eventContext -> actualToolCalls += eventContext.toolArgs.toString() }
+                onToolCallStarting { eventContext -> actualToolCalls += eventContext.toolArgs.toString() }
             }
         }
 
-        val result = agent.run("Solve task")
+        val result = agent.run("Solve task", null)
 
         assertEquals(3, actualToolCalls.size)
         assertEquals(assistantResponse, result)
     }
-
 }

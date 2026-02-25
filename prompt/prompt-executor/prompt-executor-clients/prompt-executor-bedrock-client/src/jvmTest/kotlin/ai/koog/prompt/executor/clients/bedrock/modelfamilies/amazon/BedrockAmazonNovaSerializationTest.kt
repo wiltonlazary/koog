@@ -1,20 +1,31 @@
 package ai.koog.prompt.executor.clients.bedrock.modelfamilies.amazon
 
+import ai.koog.agents.core.tools.ToolDescriptor
+import ai.koog.agents.core.tools.ToolParameterDescriptor
+import ai.koog.agents.core.tools.ToolParameterType
 import ai.koog.prompt.dsl.Prompt
 import ai.koog.prompt.executor.clients.bedrock.BedrockModels
+import ai.koog.prompt.executor.clients.bedrock.modelfamilies.amazon.NovaInferenceConfig.Companion.MAX_TOKENS_DEFAULT
 import ai.koog.prompt.llm.LLMCapability
 import ai.koog.prompt.llm.LLMProvider
 import ai.koog.prompt.llm.LLModel
 import ai.koog.prompt.message.Message
+import ai.koog.prompt.message.ResponseMetaInfo
 import ai.koog.prompt.params.LLMParams
-import kotlinx.datetime.Clock
-import kotlinx.datetime.Instant
-import kotlin.test.*
+import ai.koog.prompt.streaming.StreamFrame
+import kotlin.test.Test
+import kotlin.test.assertContains
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
+import kotlin.time.Clock
+import kotlin.time.Instant
 
 class BedrockAmazonNovaSerializationTest {
 
     private val mockClock = object : Clock {
-        override fun now(): Instant = Clock.System.now()
+        override fun now(): Instant = Instant.DISTANT_FUTURE
     }
 
     private val model = BedrockModels.AmazonNovaPro
@@ -32,7 +43,7 @@ class BedrockAmazonNovaSerializationTest {
             user(userMessage)
         }
 
-        val request = BedrockAmazonNovaSerialization.createNovaRequest(prompt, model)
+        val request = BedrockAmazonNovaSerialization.createNovaRequest(prompt, model, emptyList())
 
         assertNotNull(request)
 
@@ -46,8 +57,21 @@ class BedrockAmazonNovaSerializationTest {
         assertEquals(userMessage, request.messages[0].content[0].text)
 
         assertNotNull(request.inferenceConfig)
-        assertEquals(4096, request.inferenceConfig.maxTokens)
+        assertEquals(MAX_TOKENS_DEFAULT, request.inferenceConfig.maxTokens)
         assertEquals(temperature, request.inferenceConfig.temperature)
+    }
+
+    @Test
+    fun `createNovaRequest with default maxTokens`() {
+        val maxTokens = 1000
+
+        val prompt = Prompt.build("test", params = LLMParams(maxTokens = maxTokens)) {
+            system(systemMessage)
+            user(userMessage)
+        }
+
+        val request = BedrockAmazonNovaSerialization.createNovaRequest(prompt, model, emptyList())
+        assertEquals(maxTokens, request.inferenceConfig!!.maxTokens)
     }
 
     @Test
@@ -59,7 +83,7 @@ class BedrockAmazonNovaSerializationTest {
             user(userMessage)
         }
 
-        val request = BedrockAmazonNovaSerialization.createNovaRequest(prompt, model)
+        val request = BedrockAmazonNovaSerialization.createNovaRequest(prompt, model, emptyList())
 
         assertNotNull(request)
 
@@ -87,7 +111,7 @@ class BedrockAmazonNovaSerializationTest {
             user("Tell me a story.")
         }
 
-        val request = BedrockAmazonNovaSerialization.createNovaRequest(promptWithTemperature, model)
+        val request = BedrockAmazonNovaSerialization.createNovaRequest(promptWithTemperature, model, emptyList())
         assertEquals(temperature, request.inferenceConfig?.temperature)
 
         val modelWithoutTemperature = LLModel(
@@ -100,6 +124,7 @@ class BedrockAmazonNovaSerializationTest {
         val requestWithoutTemp = BedrockAmazonNovaSerialization.createNovaRequest(
             promptWithTemperature,
             modelWithoutTemperature,
+            emptyList()
         )
         assertEquals(null, requestWithoutTemp.inferenceConfig?.temperature)
     }
@@ -138,9 +163,9 @@ class BedrockAmazonNovaSerializationTest {
         assertContains(message.content, responseContent)
 
         // Check token counts - Note: Nova only provides outputTokens in the metaInfo
+        assertEquals(25, message.metaInfo.inputTokensCount)
         assertEquals(20, message.metaInfo.outputTokensCount)
-        assertEquals(null, message.metaInfo.inputTokensCount)
-        assertEquals(null, message.metaInfo.totalTokensCount)
+        assertEquals(45, message.metaInfo.totalTokensCount)
     }
 
     @Test
@@ -190,7 +215,7 @@ class BedrockAmazonNovaSerializationTest {
         """.trimIndent()
 
         val content = BedrockAmazonNovaSerialization.parseNovaStreamChunk(chunkJson)
-        assertEquals(chunkContent, content)
+        assertEquals(listOf(chunkContent).map(StreamFrame::TextDelta), content)
     }
 
     @Test
@@ -206,7 +231,7 @@ class BedrockAmazonNovaSerializationTest {
         """.trimIndent()
 
         val content = BedrockAmazonNovaSerialization.parseNovaStreamChunk(chunkJson)
-        assertEquals("", content)
+        assertEquals(listOf("").map(StreamFrame::TextDelta), content)
     }
 
     @Test
@@ -222,7 +247,7 @@ class BedrockAmazonNovaSerializationTest {
         """.trimIndent()
 
         val content = BedrockAmazonNovaSerialization.parseNovaStreamChunk(chunkJson)
-        assertEquals("", content)
+        assertEquals(emptyList(), content)
     }
 
     @Test
@@ -240,7 +265,110 @@ class BedrockAmazonNovaSerializationTest {
             }
         """.trimIndent()
 
-        val content = BedrockAmazonNovaSerialization.parseNovaStreamChunk(chunkJson)
-        assertEquals("", content)
+        assertEquals(
+            expected = listOf(
+                StreamFrame.End(
+                    finishReason = "stop",
+                    metaInfo = ResponseMetaInfo.create(
+                        clock = mockClock,
+                        totalTokensCount = null,
+                        inputTokensCount = null,
+                        outputTokensCount = 20
+                    )
+                )
+            ),
+            actual = BedrockAmazonNovaSerialization.parseNovaStreamChunk(chunkJson, mockClock)
+        )
+    }
+
+    @Test
+    fun `createNovaRequest with tools`() {
+        // Define test tools
+        val tool = ToolDescriptor(
+            name = "get_weather",
+            description = "Get current weather for a city",
+            requiredParameters = listOf(
+                ToolParameterDescriptor("city", "The city name", ToolParameterType.String)
+            ),
+            optionalParameters = listOf(
+                ToolParameterDescriptor("units", "Temperature units", ToolParameterType.String)
+            )
+        )
+        val tools = listOf(tool)
+
+        val prompt = Prompt.build("test") {
+            system("You are a helpful assistant that can use tools.")
+            user("What's the weather in Paris?")
+        }
+
+        val request = BedrockAmazonNovaSerialization.createNovaRequest(prompt, model, tools)
+
+        // Verify toolConfig is included in the request
+        assertNotNull(request.toolConfig)
+        assertNotNull(request.toolConfig.tools)
+        assertEquals(1, request.toolConfig.tools.size)
+
+        // Verify tool details
+        val toolSpec = request.toolConfig.tools[0].toolSpec
+        assertEquals(tool.name, toolSpec.name)
+        assertEquals(tool.description, toolSpec.description)
+
+        // Verify tool schema
+        val inputSchema = toolSpec.inputSchema
+        assertNotNull(inputSchema)
+        val jsonSchema = inputSchema.json
+        assertEquals("object", jsonSchema.type)
+        assertTrue(jsonSchema.properties.contains("city"))
+        assertEquals(listOf("city"), jsonSchema.required)
+    }
+
+    @Test
+    fun `parseNovaResponse with tool call`() {
+        val responseJson = """
+            {
+                "output": {
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "toolUse": {
+                                    "toolUseId": "tool_123",
+                                    "name": "get_weather",
+                                    "input": {
+                                        "city": "Paris",
+                                        "units": "celsius"
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                },
+                "usage": {
+                    "inputTokens": 25,
+                    "outputTokens": 20,
+                    "totalTokens": 45
+                },
+                "stopReason": "tool_use"
+            }
+        """.trimIndent()
+
+        val messages = BedrockAmazonNovaSerialization.parseNovaResponse(responseJson, mockClock)
+
+        assertNotNull(messages)
+        assertEquals(1, messages.size)
+
+        val message = messages.first()
+        assertIs<Message.Tool.Call>(message)
+
+        val toolCall = message
+        assertEquals("tool_123", toolCall.id)
+        assertEquals("get_weather", toolCall.tool)
+        assertTrue(toolCall.content.contains("Paris"))
+        assertTrue(toolCall.content.contains("celsius"))
+
+        // Check token counts
+        assertEquals(20, toolCall.metaInfo.outputTokensCount)
+        assertEquals(25, toolCall.metaInfo.inputTokensCount)
+        assertEquals(45, toolCall.metaInfo.totalTokensCount)
     }
 }

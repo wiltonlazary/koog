@@ -13,10 +13,13 @@ kotlin {
         commonMain {
             dependencies {
                 api(project(":agents:agents-tools"))
-                api(project(":agents:agents-utils"))
+                api(project(":http-client:http-client-core"))
+                api(project(":utils"))
                 api(project(":prompt:prompt-executor:prompt-executor-clients"))
                 api(project(":prompt:prompt-llm"))
                 api(project(":prompt:prompt-model"))
+                api(project(":prompt:prompt-structure"))
+                api(project(":http-client:http-client-ktor"))
                 api(libs.kotlinx.coroutines.core)
                 api(libs.kotlinx.datetime)
                 api(libs.ktor.client.content.negotiation)
@@ -25,30 +28,22 @@ kotlin {
             }
         }
 
-        jvmMain {
+        jsTest {
             dependencies {
-                api(libs.ktor.client.cio)
-            }
-        }
-
-        jsMain {
-            dependencies {
-                api(libs.ktor.client.js)
+                implementation(libs.ktor.client.js)
             }
         }
 
         commonTest {
             dependencies {
-                implementation(kotlin("test"))
-                implementation(libs.kotlinx.coroutines.test)
-                implementation(libs.kotlinx.serialization.core)
-                implementation(libs.kotlinx.serialization.json)
+                implementation(project(":test-utils"))
             }
         }
 
         jvmTest {
             dependencies {
-                implementation(kotlin("test-junit5"))
+                implementation(libs.ktor.client.mock)
+                implementation(libs.ktor.client.cio)
             }
         }
     }

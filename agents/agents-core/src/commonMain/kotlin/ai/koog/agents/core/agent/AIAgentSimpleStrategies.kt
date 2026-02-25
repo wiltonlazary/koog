@@ -1,6 +1,6 @@
 package ai.koog.agents.core.agent
 
-import ai.koog.agents.core.agent.entity.AIAgentStrategy
+import ai.koog.agents.core.agent.entity.AIAgentGraphStrategy
 import ai.koog.agents.core.dsl.builder.forwardTo
 import ai.koog.agents.core.dsl.builder.strategy
 import ai.koog.agents.core.dsl.extension.nodeExecuteMultipleTools
@@ -13,6 +13,7 @@ import ai.koog.agents.core.dsl.extension.onAssistantMessage
 import ai.koog.agents.core.dsl.extension.onMultipleAssistantMessages
 import ai.koog.agents.core.dsl.extension.onMultipleToolCalls
 import ai.koog.agents.core.dsl.extension.onToolCall
+import kotlin.jvm.JvmOverloads
 
 /**
  * Creates a single-run strategy for an AI agent.
@@ -24,19 +25,19 @@ import ai.koog.agents.core.dsl.extension.onToolCall
  * 3. Execute a tool based on the LLM's response.
  * 4. Send the tool result back to the LLM.
  * 5. Repeat until LLM indicates no further tool calls are needed or the agent finishes.
- * @param runMode The mode in which the single-run strategy should operate. Defaults to SingleRunMode.SINGLE.
- *                - SingleRunMode.SINGLE: Executes without allowing multiple simultaneous tool calls.
- *                - SingleRunMode.SEQUENTIAL: Executes simultaneous tool calls sequentially.
- *                - SingleRunMode.PARALLEL: Executes multiple tool calls in parallel.
- * @return An instance of AIAgentStrategy configured according to the specified single-run mode.
+ * @param runMode The mode in which the single-run strategy should operate. Defaults to [ToolCalls.SEQUENTIAL].
+ *                - [ToolCalls.SEQUENTIAL]: Executes multiple tool calls sequentially.
+ *                - [ToolCalls.PARALLEL]: Executes multiple tool calls in parallel.
+ *                - [ToolCalls.SINGLE_RUN_SEQUENTIAL]: Executes a single tool call per step.
+ * @return An instance of AIAgentStrategy configured according to the specified run mode.
  */
-public fun singleRunStrategy(runMode: ToolCalls = ToolCalls.SINGLE_RUN_SEQUENTIAL): AIAgentStrategy<String, String> =
+@JvmOverloads
+public fun singleRunStrategy(runMode: ToolCalls = ToolCalls.SEQUENTIAL): AIAgentGraphStrategy<String, String> =
     when (runMode) {
         ToolCalls.SEQUENTIAL -> singleRunWithParallelAbility(false)
-        ToolCalls.PARALLEL   -> singleRunWithParallelAbility(true)
-        ToolCalls.SINGLE_RUN_SEQUENTIAL     -> singleRunModeStrategy()
+        ToolCalls.PARALLEL -> singleRunWithParallelAbility(true)
+        ToolCalls.SINGLE_RUN_SEQUENTIAL -> singleRunModeStrategy()
     }
-
 
 private fun singleRunWithParallelAbility(parallelTools: Boolean) = strategy("single_run_sequential") {
     val nodeCallLLM by nodeLLMRequestMultiple()
@@ -45,17 +46,21 @@ private fun singleRunWithParallelAbility(parallelTools: Boolean) = strategy("sin
 
     edge(nodeStart forwardTo nodeCallLLM)
     edge(nodeCallLLM forwardTo nodeExecuteTool onMultipleToolCalls { true })
-    edge(nodeCallLLM forwardTo nodeFinish
+    edge(
+        nodeCallLLM forwardTo nodeFinish
             onMultipleAssistantMessages { true }
-            transformed { it.joinToString("\n") { message -> message.content } })
+            transformed { it.joinToString("\n") { message -> message.content } }
+    )
 
     edge(nodeExecuteTool forwardTo nodeSendToolResult)
 
-    edge(nodeSendToolResult forwardTo nodeFinish
-            onMultipleAssistantMessages { true }
-            transformed { it.joinToString("\n") { message -> message.content } })
-
     edge(nodeSendToolResult forwardTo nodeExecuteTool onMultipleToolCalls { true })
+
+    edge(
+        nodeSendToolResult forwardTo nodeFinish
+            onMultipleAssistantMessages { true }
+            transformed { it.joinToString("\n") { message -> message.content } }
+    )
 }
 
 private fun singleRunModeStrategy() = strategy("single_run") {
@@ -80,5 +85,7 @@ private fun singleRunModeStrategy() = strategy("single_run") {
  * - SINGLE: Multiple tool calls are not allowed.
  */
 public enum class ToolCalls {
-    SEQUENTIAL, PARALLEL, SINGLE_RUN_SEQUENTIAL
+    SEQUENTIAL,
+    PARALLEL,
+    SINGLE_RUN_SEQUENTIAL
 }

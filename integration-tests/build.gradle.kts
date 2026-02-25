@@ -2,9 +2,10 @@ group = "${rootProject.group}.integration-tests"
 version = rootProject.version
 
 plugins {
-    id("ai.kotlin.multiplatform")
+    id("ai.kotlin.multiplatform.server")
     alias(libs.plugins.kotlin.serialization)
     id("ai.koog.gradle.plugins.credentialsresolver")
+    id("netty-convention")
 }
 
 kotlin {
@@ -12,9 +13,12 @@ kotlin {
         jvmMain {
             dependencies {
                 implementation(project(":prompt:prompt-executor:prompt-executor-llms-all"))
+
                 implementation(libs.testcontainers)
-                implementation(kotlin("test"))
+                implementation(libs.ktor.server.netty)
                 implementation(kotlin("test-junit5"))
+                runtimeOnly(libs.ktor.client.cio)
+                runtimeOnly(libs.slf4j.simple)
             }
         }
 
@@ -24,18 +28,39 @@ kotlin {
                 implementation(project(":agents:agents-features:agents-features-event-handler"))
                 implementation(project(":agents:agents-features:agents-features-trace"))
                 implementation(project(":agents:agents-features:agents-features-snapshot"))
-                implementation(project(":prompt:prompt-executor:prompt-executor-clients:prompt-executor-anthropic-client"))
+                implementation(project(":agents:agents-features:agents-features-acp"))
+                implementation(project(":agents:agents-mcp"))
+                implementation(project(":agents:agents-features:agents-features-opentelemetry"))
+                implementation(project(":agents:agents-mcp-server"))
+                implementation(project(":agents:agents-test"))
+                implementation(
+                    project(":prompt:prompt-executor:prompt-executor-clients:prompt-executor-anthropic-client")
+                )
                 implementation(project(":prompt:prompt-executor:prompt-executor-clients:prompt-executor-openai-client"))
-                implementation(project(":prompt:prompt-executor:prompt-executor-clients:prompt-executor-openrouter-client"))
+                implementation(
+                    project(":prompt:prompt-executor:prompt-executor-clients:prompt-executor-openrouter-client")
+                )
                 implementation(project(":prompt:prompt-executor:prompt-executor-clients:prompt-executor-google-client"))
+                implementation(
+                    project(":prompt:prompt-executor:prompt-executor-clients:prompt-executor-mistralai-client")
+                )
                 implementation(libs.junit.jupiter.params)
                 implementation(libs.kotlinx.coroutines.test)
                 implementation(libs.kotlinx.serialization.json)
+                implementation(libs.kotest.assertions.core)
+                implementation(libs.aws.sdk.kotlin.sts)
+                implementation(libs.aws.sdk.kotlin.bedrock)
+                implementation(libs.aws.sdk.kotlin.bedrockruntime)
                 implementation(libs.ktor.client.content.negotiation)
-                runtimeOnly(libs.slf4j.simple)
+                implementation(libs.opentelemetry.sdk.testing)
             }
         }
     }
+}
+
+configurations.all {
+    // make sure we have Netty as a server, not CIO
+    exclude(group = "io.ktor", module = "ktor-server-cio")
 }
 
 val envs = credentialsResolver.resolve(
@@ -43,15 +68,21 @@ val envs = credentialsResolver.resolve(
 )
 
 tasks.withType<Test> {
-    doFirst {
-        environment(envs.get())
-    }
-    
     // Forward system properties to the test JVM
     System.getProperties().forEach { key, value ->
         systemProperty(key.toString(), value)
     }
 }
+
+// Try loading envs from file for integration tests only.
+tasks.withType<Test>()
+    .matching { it.name in listOf("jvmIntegrationTest", "jvmOllamaTest") }
+    .configureEach {
+        doFirst {
+            logger.info("Loading envs from local file")
+            environment(envs.get())
+        }
+    }
 
 dokka {
     dokkaSourceSets.configureEach {

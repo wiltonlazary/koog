@@ -6,10 +6,11 @@ import ai.koog.agents.memory.model.MemoryScope
 import ai.koog.agents.memory.model.MemorySubject
 import ai.koog.agents.memory.storage.Storage
 import ai.koog.rag.base.files.FileSystemProvider
+import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
-
 
 /**
  * File-based implementation of [AgentMemoryProvider] that provides persistent storage of agent memory
@@ -84,6 +85,10 @@ public data class LocalFileMemoryProvider<Path>(
     private val fs: FileSystemProvider.ReadWrite<Path>,
     private val root: Path,
 ) : AgentMemoryProvider {
+    private companion object {
+        private val logger = KotlinLogging.logger { }
+    }
+
     /**
      * Mutex for ensuring thread-safe access to fact storage.
      * This lock prevents race conditions during concurrent read/write operations by:
@@ -134,7 +139,7 @@ public data class LocalFileMemoryProvider<Path>(
             is MemoryScope.Product -> listOf("product", scope.name, "subject", subject.name)
             MemoryScope.CrossProduct -> listOf("organization", "subject", subject.name)
         }
-        return segments.fold(root) { acc, segment -> fs.fromRelativeString(acc, segment) }
+        return segments.fold(root) { acc, segment -> fs.joinPath(acc, segment) }
     }
 
     /**
@@ -142,6 +147,7 @@ public data class LocalFileMemoryProvider<Path>(
      * This method provides atomic read operations with the following guarantees:
      * - Thread safety through mutex locking
      * - Graceful handling of missing files (returns empty map)
+     * - Graceful handling of corrupted JSON files (returns empty map with warning)
      * - Consistent deserialization of stored facts
      *
      * The returned map uses concept keywords as keys for efficient lookup
@@ -152,7 +158,16 @@ public data class LocalFileMemoryProvider<Path>(
      */
     private suspend fun loadFacts(path: Path): Map<String, List<Fact>> = mutex.withLock {
         val content = storage.read(path) ?: return emptyMap()
-        return json.decodeFromString(content)
+
+        return try {
+            json.decodeFromString<Map<String, List<Fact>>>(content)
+        } catch (e: SerializationException) {
+            logger.warn(e) { "Failed to deserialize facts from $path: ${e.message}" }
+            emptyMap()
+        } catch (e: Exception) {
+            logger.error(e) { "Unexpected error loading facts from $path: ${e.message}" }
+            emptyMap()
+        }
     }
 
     /**
@@ -203,7 +218,7 @@ public data class LocalFileMemoryProvider<Path>(
      */
     override suspend fun save(fact: Fact, subject: MemorySubject, scope: MemoryScope) {
         val path = getStoragePath(subject, scope)
-        storage.createDirectories(fs.fromRelativeString(root, config.storageDirectory))
+        storage.createDirectories(fs.joinPath(root, config.storageDirectory))
 
         val facts = loadFacts(path).toMutableMap()
         val key = fact.concept.keyword
@@ -293,7 +308,11 @@ public data class LocalFileMemoryProvider<Path>(
      * @param scope Visibility scope to search in (e.g., Agent, Feature)
      * @return List of facts whose concepts match the description
      */
-    override suspend fun loadByDescription(description: String, subject: MemorySubject, scope: MemoryScope): List<Fact> {
+    override suspend fun loadByDescription(
+        description: String,
+        subject: MemorySubject,
+        scope: MemoryScope
+    ): List<Fact> {
         val path = getStoragePath(subject, scope)
         val facts = loadFacts(path)
 

@@ -34,11 +34,20 @@ public annotation class PromptDSL
 public fun prompt(
     id: String,
     params: LLMParams = LLMParams(),
-    clock: Clock = Clock.System,
+    clock: Clock = kotlin.time.Clock.System,
     build: PromptBuilder.() -> Unit
 ): Prompt {
     return Prompt.build(id, params, clock, build)
 }
+
+/**
+ * Constructs an empty instance of the [Prompt] class with no messages, default parameters,
+ * and an empty identifier. This empty prompt can be used as a default or placeholder.
+ *
+ * @return A new [Prompt] instance with no messages, an empty identifier, and default parameters.
+ */
+@PromptDSL
+public fun emptyPrompt(): Prompt = Prompt.build("") { }
 
 /**
  * Extends an existing prompt using the Prompt DSL.
@@ -62,8 +71,8 @@ public fun prompt(
  * @return A new Prompt object based on the existing one
  */
 public fun prompt(
-    existing: Prompt, 
-    clock: Clock = Clock.System,
+    existing: Prompt,
+    clock: Clock = kotlin.time.Clock.System,
     build: PromptBuilder.() -> Unit
 ): Prompt {
     return Prompt.build(existing, clock, build)

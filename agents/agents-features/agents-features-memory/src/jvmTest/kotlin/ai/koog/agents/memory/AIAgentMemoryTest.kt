@@ -8,7 +8,13 @@ import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.agents.memory.config.MemoryScopeType
 import ai.koog.agents.memory.config.MemoryScopesProfile
 import ai.koog.agents.memory.feature.AgentMemory
-import ai.koog.agents.memory.model.*
+import ai.koog.agents.memory.model.Concept
+import ai.koog.agents.memory.model.Fact
+import ai.koog.agents.memory.model.FactType
+import ai.koog.agents.memory.model.MemoryScope
+import ai.koog.agents.memory.model.MemorySubject
+import ai.koog.agents.memory.model.MultipleFacts
+import ai.koog.agents.memory.model.SingleFact
 import ai.koog.agents.memory.providers.AgentMemoryProvider
 import ai.koog.agents.memory.providers.NoMemory
 import ai.koog.agents.testing.tools.MockEnvironment
@@ -18,17 +24,21 @@ import ai.koog.prompt.dsl.prompt
 import ai.koog.prompt.executor.clients.anthropic.AnthropicModels
 import ai.koog.prompt.executor.clients.openai.OpenAIModels
 import ai.koog.prompt.executor.model.PromptExecutor
+import ai.koog.prompt.llm.LLMProvider
 import ai.koog.prompt.llm.LLModel
 import ai.koog.prompt.message.Message
-import io.mockk.*
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.slot
 import kotlinx.coroutines.test.runTest
-import kotlinx.datetime.Clock
-import kotlinx.datetime.Instant
 import kotlinx.serialization.Serializable
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-
+import kotlin.time.Clock
+import kotlin.time.Instant
 
 @OptIn(InternalAgentsApi::class)
 class AIAgentMemoryTest {
@@ -48,6 +58,7 @@ class AIAgentMemoryTest {
 
     private val testModel = mockk<LLModel> {
         every { id } returns "test-model"
+        every { provider } returns mockk<LLMProvider>()
     }
 
     private val testClock: Clock = object : Clock {
@@ -82,17 +93,18 @@ class AIAgentMemoryTest {
         every { response.content } returns "Test fact"
 
         coEvery {
-            promptExecutor.execute(any(), any(), any())
+            promptExecutor.execute(any(), any())
         } returns listOf(response)
 
         coEvery {
             memoryProvider.save(any(), any(), any())
         } returns Unit
 
-        val llmContext = AIAgentLLMContext(
+        val llm = AIAgentLLMContext(
             tools = emptyList(),
             prompt = prompt("test") { },
             model = testModel,
+            responseProcessor = null,
             promptExecutor = promptExecutor,
             environment = MockEnvironment(toolRegistry = ToolRegistry.EMPTY, promptExecutor),
             config = AIAgentConfig(Prompt.Empty, testModel, 100),
@@ -101,12 +113,12 @@ class AIAgentMemoryTest {
 
         val memory = AgentMemory(
             agentMemory = memoryProvider,
-            llm = llmContext,
             scopesProfile = MemoryScopesProfile()
         )
         val concept = Concept("test", "test description", FactType.SINGLE)
 
         memory.saveFactsFromHistory(
+            llm = llm,
             concept = concept,
             subject = MemorySubjects.User,
             scope = MemoryScope.Agent("test")
@@ -116,8 +128,8 @@ class AIAgentMemoryTest {
             memoryProvider.save(
                 match {
                     it is SingleFact &&
-                            it.concept == concept &&
-                            it.timestamp > 0 // Verify timestamp is set
+                        it.concept == concept &&
+                        it.timestamp > 0 // Verify timestamp is set
                 },
                 MemorySubjects.User,
                 MemoryScope.Agent("test")
@@ -136,54 +148,40 @@ class AIAgentMemoryTest {
         val featureFact = SingleFact(concept = concept, value = "feature fact", timestamp = testTimestamp)
         val productFact = SingleFact(concept = concept, value = "product fact", timestamp = testTimestamp)
 
-        // Mock responses for all subjects for Agent scope
-        MemorySubject.registeredSubjects.forEach { subject ->
-            coEvery {
-                memoryProvider.load(concept, subject, MemoryScope.Agent("test-agent"))
-            } returns when (subject) {
-                MemorySubjects.User -> listOf(agentFact)
-                else -> emptyList()
-            }
-        }
+        // Mock responses for User subject with specific scopes
+        coEvery {
+            memoryProvider.load(concept, MemorySubjects.User, MemoryScope.Agent("test-agent"))
+        } returns listOf(agentFact)
 
-        // Mock responses for all subjects for Feature scope
-        MemorySubject.registeredSubjects.forEach { subject ->
-            coEvery {
-                memoryProvider.load(concept, subject, MemoryScope.Feature("test-feature"))
-            } returns when (subject) {
-                MemorySubjects.User -> listOf(featureFact)
-                else -> emptyList()
-            }
-        }
+        coEvery {
+            memoryProvider.load(concept, MemorySubjects.User, MemoryScope.Feature("test-feature"))
+        } returns listOf(featureFact)
 
-        // Mock responses for all subjects for Product scope
-        MemorySubject.registeredSubjects.forEach { subject ->
-            coEvery {
-                memoryProvider.load(concept, subject, MemoryScope.Product("test-product"))
-            } returns when (subject) {
-                MemorySubjects.User -> listOf(productFact)
-                else -> emptyList()
-            }
-        }
+        coEvery {
+            memoryProvider.load(concept, MemorySubjects.User, MemoryScope.Product("test-product"))
+        } returns listOf(productFact)
 
-        // Mock responses for CrossProduct scope
-        MemorySubject.registeredSubjects.forEach { subject ->
-            coEvery {
-                memoryProvider.load(concept, subject, MemoryScope.CrossProduct)
-            } returns emptyList()
-        }
+        coEvery {
+            memoryProvider.load(concept, MemorySubjects.User, MemoryScope.CrossProduct)
+        } returns emptyList()
+
+        // All other requests
+        coEvery {
+            memoryProvider.load(any(), any(), any())
+        } returns emptyList()
 
         val response = mockk<Message.Response>()
         every { response.content } returns "OK"
 
         coEvery {
-            promptExecutor.execute(any(), any(), any())
+            promptExecutor.execute(any(), any())
         } returns listOf(response)
 
-        val llmContext = AIAgentLLMContext(
+        val llm = AIAgentLLMContext(
             tools = emptyList(),
             prompt = prompt("test") { },
             model = testModel,
+            responseProcessor = null,
             promptExecutor = promptExecutor,
             environment = MockEnvironment(toolRegistry = ToolRegistry.EMPTY, promptExecutor),
             config = AIAgentConfig(Prompt.Empty, testModel, 100),
@@ -192,7 +190,6 @@ class AIAgentMemoryTest {
 
         val memory = AgentMemory(
             agentMemory = memoryProvider,
-            llm = llmContext,
             scopesProfile = MemoryScopesProfile(
                 MemoryScopeType.AGENT to "test-agent",
                 MemoryScopeType.FEATURE to "test-feature",
@@ -201,7 +198,7 @@ class AIAgentMemoryTest {
             )
         )
 
-        memory.loadFactsToAgent(concept, subjects = listOf(MemorySubjects.User))
+        memory.loadFactsToAgent(llm = llm, concept = concept, subjects = listOf(MemorySubjects.User))
 
         coVerify {
             memoryProvider.load(concept, MemorySubjects.User, MemoryScope.Agent("test-agent"))
@@ -229,23 +226,22 @@ class AIAgentMemoryTest {
         coEvery {
             memoryProvider.load(any(), any(), any())
         } answers {
-            println("[DEBUG_LOG] Loading facts for subject: ${secondArg<MemorySubject>()}, scope: ${thirdArg<MemoryScope>()}")
+            println(
+                "[DEBUG_LOG] Loading facts for subject: ${secondArg<MemorySubject>()}, scope: ${thirdArg<MemoryScope>()}"
+            )
             listOf(machineFact)
         }
 
         // Create a slot to capture the prompt update
         val promptUpdateSlot = slot<PromptBuilder.() -> Unit>()
 
-        // Mock LLM context to capture prompt updates
-        mockkConstructor(AIAgentLLMWriteSession::class)
-
-        val llmContext = mockk<AIAgentLLMContext>() {
+        val llm = mockk<AIAgentLLMContext> {
             coEvery {
                 writeSession<Any?>(any<suspend AIAgentLLMWriteSession.() -> Any?>())
             } coAnswers {
                 val block = firstArg<suspend AIAgentLLMWriteSession.() -> Any?>()
                 val writeSession = mockk<AIAgentLLMWriteSession> {
-                    every { updatePrompt(capture(promptUpdateSlot)) } answers {
+                    every { appendPrompt(capture(promptUpdateSlot)) } answers {
                         println("[DEBUG_LOG] Updating prompt with message containing facts")
                     }
                 }
@@ -255,15 +251,14 @@ class AIAgentMemoryTest {
 
         val memory = AgentMemory(
             agentMemory = memoryProvider,
-            llm = llmContext,
             scopesProfile = MemoryScopesProfile(MemoryScopeType.AGENT to "test-agent")
         )
 
-        memory.loadFactsToAgent(concept)
+        memory.loadFactsToAgent(llm, concept, subjects = listOf(MemorySubjects.User))
 
         // Verify that writeSession was called and the prompt was updated with facts
         coVerify {
-            llmContext.writeSession(any())
+            llm.writeSession(any<suspend AIAgentLLMWriteSession.() -> Any?>())
         }
         assertTrue(promptUpdateSlot.isCaptured, "Prompt update should be captured")
 
@@ -286,16 +281,11 @@ class AIAgentMemoryTest {
         val promptExecutor = mockk<PromptExecutor>()
         val savedFacts = mutableListOf<SingleFact>()
 
-        // Mock DefaultTimeProvider to return sequential timestamps
-        mockkObject(DefaultTimeProvider)
-        var currentTime = 1000L
-        every { DefaultTimeProvider.getCurrentTimestamp() } answers { currentTime++ }
-
         // Mock LLM response
         val response = mockk<Message.Response>()
         every { response.content } returns "Test fact"
         coEvery {
-            promptExecutor.execute(any(), any(), any())
+            promptExecutor.execute(any(), any())
         } returns listOf(response)
 
         // Mock memory feature to capture saved facts
@@ -303,11 +293,12 @@ class AIAgentMemoryTest {
             memoryProvider.save(capture(savedFacts), any(), any())
         } returns Unit
 
-        val llmContext = AIAgentLLMContext(
+        val llm = AIAgentLLMContext(
             tools = emptyList(),
             prompt = prompt("test") { },
             model = testModel,
             promptExecutor = promptExecutor,
+            responseProcessor = null,
             environment = MockEnvironment(toolRegistry = ToolRegistry.EMPTY, promptExecutor),
             config = AIAgentConfig(Prompt.Empty, testModel, 100),
             clock = testClock
@@ -315,7 +306,6 @@ class AIAgentMemoryTest {
 
         val memory = AgentMemory(
             agentMemory = memoryProvider,
-            llm = llmContext,
             scopesProfile = MemoryScopesProfile()
         )
 
@@ -326,6 +316,7 @@ class AIAgentMemoryTest {
         // Save multiple facts
         repeat(3) { index ->
             memory.saveFactsFromHistory(
+                llm = llm,
                 concept = concept,
                 subject = subject,
                 scope = scope
@@ -360,7 +351,7 @@ class AIAgentMemoryTest {
 
     @Test
     fun testSaveFactsFromHistoryWithCustomModel() = runTest {
-        val customModel = OpenAIModels.CostOptimized.O3Mini
+        val customModel = OpenAIModels.Chat.O3Mini
         val originalModel = testModel
 
         val memoryProvider = mockk<AgentMemoryProvider>()
@@ -375,14 +366,14 @@ class AIAgentMemoryTest {
 
         val capturedModels = mutableListOf<LLModel>()
         coEvery {
-            promptExecutor.execute(any(), capture(capturedModels), any())
+            promptExecutor.execute(any(), capture(capturedModels))
         } returns listOf(response)
 
         coEvery {
             memoryProvider.save(capture(savedFacts), capture(savedSubjects), capture(savedScopes))
         } returns Unit
 
-        val llmContext = AIAgentLLMContext(
+        val llm = AIAgentLLMContext(
             tools = emptyList(),
             prompt = prompt("test") {
                 system("Test system message")
@@ -390,6 +381,7 @@ class AIAgentMemoryTest {
                 assistant("I'll remember your preference for Java in enterprise development")
             },
             model = originalModel,
+            responseProcessor = null,
             promptExecutor = promptExecutor,
             environment = MockEnvironment(toolRegistry = ToolRegistry.EMPTY, promptExecutor),
             config = AIAgentConfig(Prompt.Empty, originalModel, 100),
@@ -398,7 +390,6 @@ class AIAgentMemoryTest {
 
         val memory = AgentMemory(
             agentMemory = memoryProvider,
-            llm = llmContext,
             scopesProfile = MemoryScopesProfile()
         )
 
@@ -407,6 +398,7 @@ class AIAgentMemoryTest {
         val testScope = MemoryScope.Agent("test")
 
         memory.saveFactsFromHistory(
+            llm = llm,
             concept = concept,
             subject = testSubject,
             scope = testScope,
@@ -434,7 +426,7 @@ class AIAgentMemoryTest {
         }
 
         coVerify(exactly = 1) {
-            promptExecutor.execute(any(), customModel, any())
+            promptExecutor.execute(any(), customModel)
         }
     }
 
@@ -448,7 +440,9 @@ class AIAgentMemoryTest {
         val testScopeName = "test"
 
         val response = mockk<Message.Response>()
-        every { response.content } returns """
+        every {
+            response.content
+        } returns """
             {
                 "facts": [
                     {"fact": "Java for backend services"},
@@ -460,14 +454,14 @@ class AIAgentMemoryTest {
 
         val capturedModels = mutableListOf<LLModel>()
         coEvery {
-            promptExecutor.execute(any(), capture(capturedModels), any())
+            promptExecutor.execute(any(), capture(capturedModels))
         } returns listOf(response)
 
         coEvery {
             memoryProvider.save(capture(savedFacts), any(), any())
         } returns Unit
 
-        val llmContext = AIAgentLLMContext(
+        val llm = AIAgentLLMContext(
             tools = emptyList(),
             prompt = prompt("test") {
                 system("Test system message")
@@ -475,6 +469,7 @@ class AIAgentMemoryTest {
                 assistant("I'll remember your language preferences for different domains")
             },
             model = testModel,
+            responseProcessor = null,
             promptExecutor = promptExecutor,
             environment = MockEnvironment(toolRegistry = ToolRegistry.EMPTY, promptExecutor),
             config = AIAgentConfig(Prompt.Empty, testModel, 100),
@@ -483,7 +478,6 @@ class AIAgentMemoryTest {
 
         val memory = AgentMemory(
             agentMemory = memoryProvider,
-            llm = llmContext,
             scopesProfile = MemoryScopesProfile()
         )
 
@@ -491,6 +485,7 @@ class AIAgentMemoryTest {
             Concept("language-preferences", "User's programming language preferences by domain", FactType.MULTIPLE)
 
         memory.saveFactsFromHistory(
+            llm = llm,
             concept = concept,
             subject = MemorySubjects.User,
             scope = MemoryScope.Agent(testScopeName),
@@ -521,10 +516,10 @@ class AIAgentMemoryTest {
             memoryProvider.save(
                 match {
                     it is MultipleFacts &&
-                            it.concept == concept &&
-                            it.timestamp > 0 &&
-                            it.values.size == expectedFacts.size &&
-                            expectedFacts.all { expected -> it.values.contains(expected) }
+                        it.concept == concept &&
+                        it.timestamp > 0 &&
+                        it.values.size == expectedFacts.size &&
+                        expectedFacts.all { expected -> it.values.contains(expected) }
                 },
                 MemorySubjects.User,
                 MemoryScope.Agent(testScopeName)
@@ -546,13 +541,14 @@ class AIAgentMemoryTest {
         every { response.content } returns "OK"
 
         coEvery {
-            promptExecutor.execute(any(), any(), any())
+            promptExecutor.execute(any(), any())
         } returns listOf(response)
 
-        val llmContext = AIAgentLLMContext(
+        val llm = AIAgentLLMContext(
             tools = emptyList(),
             prompt = prompt("test") { },
             model = testModel,
+            responseProcessor = null,
             promptExecutor = promptExecutor,
             environment = MockEnvironment(toolRegistry = ToolRegistry.EMPTY, promptExecutor),
             config = AIAgentConfig(Prompt.Empty, testModel, 100),
@@ -561,14 +557,14 @@ class AIAgentMemoryTest {
 
         val memory = AgentMemory(
             agentMemory = memoryProvider,
-            llm = llmContext,
             scopesProfile = MemoryScopesProfile(
                 MemoryScopeType.AGENT to "test-agent",
             )
         )
 
         memory.loadFactsToAgent(
-            concept,
+            llm = llm,
+            concept = concept,
             scopes = listOf(MemoryScopeType.AGENT),
             subjects = listOf(MemorySubjects.User)
         )

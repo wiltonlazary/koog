@@ -2,8 +2,9 @@ package ai.koog.prompt.executor.clients.openai
 
 import ai.koog.prompt.executor.clients.list
 import ai.koog.prompt.llm.LLMProvider
+import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.shouldBe
 import kotlin.test.Test
-import kotlin.test.assertSame
 
 class OpenAIModelsTest {
 
@@ -12,11 +13,20 @@ class OpenAIModelsTest {
         val models = OpenAIModels.list()
 
         models.forEach { model ->
-            assertSame(
-                expected = LLMProvider.OpenAI,
-                actual = model.provider,
-                message = "OpenAI model ${model.id} doesn't have OpenAI provider but ${model.provider}."
-            )
+            model.provider shouldBe LLMProvider.OpenAI
+        }
+    }
+
+    @Test
+    fun `OpenAIModels models should return all declared models`() {
+        val reflectionModels = OpenAIModels.list().map { it.id }
+
+        val models = OpenAIModels.models.map { it.id }
+
+        assert(models.size == reflectionModels.size)
+
+        reflectionModels.forEach { model ->
+            models shouldContain model
         }
     }
 }

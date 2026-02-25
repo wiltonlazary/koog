@@ -4,14 +4,15 @@ import ai.koog.agents.core.tools.ToolDescriptor
 import ai.koog.prompt.dsl.ModerationResult
 import ai.koog.prompt.dsl.Prompt
 import ai.koog.prompt.executor.clients.LLMClient
-import ai.koog.prompt.executor.model.LLMChoice
 import ai.koog.prompt.executor.model.PromptExecutor
 import ai.koog.prompt.llm.LLMProvider
 import ai.koog.prompt.llm.LLModel
+import ai.koog.prompt.message.LLMChoice
 import ai.koog.prompt.message.Message
+import ai.koog.prompt.streaming.StreamFrame
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
+import kotlin.jvm.JvmOverloads
 
 /**
  * MultiLLMPromptExecutor is a class responsible for executing prompts
@@ -23,7 +24,7 @@ import kotlinx.coroutines.flow.flow
  * @param llmClients A map containing LLM providers associated with their respective [LLMClient]s.
  * @param fallback Optional settings to configure the fallback mechanism in case a specific provider is not directly available.
  */
-public open class MultiLLMPromptExecutor(
+public open class MultiLLMPromptExecutor @JvmOverloads constructor(
     private val llmClients: Map<LLMProvider, LLMClient>,
     private val fallback: FallbackPromptExecutorSettings? = null
 ) : PromptExecutor {
@@ -62,7 +63,24 @@ public open class MultiLLMPromptExecutor(
      * @param llmClients Variable number of pairs, where each pair consists of an `LLMProvider` representing
      *                   the provider and a `LLMClient` for communication with that provider.
      */
-    public constructor(vararg llmClients: Pair<LLMProvider, LLMClient>) : this(mapOf(*llmClients))
+    @JvmOverloads
+    public constructor (
+        vararg llmClients: Pair<LLMProvider, LLMClient>,
+        fallback: FallbackPromptExecutorSettings? = null
+    ) : this(llmClients = mapOf(*llmClients), fallback = fallback)
+
+    /**
+     * Secondary constructor for `MultiLLMPromptExecutor` that accepts a variable number of `LLMClient` instances.
+     * The provided clients are processed to create a mapping of `LLMProvider` to their respective `LLMClient`.
+     *
+     * @param llmClients Vararg parameter of `LLMClient` instances used to construct the executor.
+     */
+    @JvmOverloads
+    public constructor (vararg llmClients: LLMClient) : this(
+        llmClients.map {
+            it.llmProvider() to it
+        }.associateBy({ it.first }, { it.second })
+    )
 
     /**
      * Companion object for `MultiLLMPromptExecutor` class.
@@ -125,6 +143,7 @@ public open class MultiLLMPromptExecutor(
                 fallback.fallbackModel,
                 tools
             )
+
             else -> throw IllegalArgumentException("No client found for provider: $provider")
         }
 
@@ -138,18 +157,19 @@ public open class MultiLLMPromptExecutor(
      *
      * @param prompt The prompt to execute, containing the messages and parameters.
      * @param model The LLM model to use for execution.
+     * @param tools A list of `ToolDescriptor` objects representing external tools available for use during execution.
      **/
-    override suspend fun executeStreaming(prompt: Prompt, model: LLModel): Flow<String> = flow {
+    override fun executeStreaming(
+        prompt: Prompt,
+        model: LLModel,
+        tools: List<ToolDescriptor>
+    ): Flow<StreamFrame> {
         logger.debug { "Executing streaming prompt: $prompt with model: $model" }
 
         val provider = model.provider
-        val client = llmClients[provider] ?: throw IllegalArgumentException("No client found for provider: $provider")
+        val client = requireNotNull(llmClients[model.provider]) { "No client found for provider: $provider" }
 
-        val responseFlow = client.executeStreaming(prompt, model)
-
-        responseFlow.collect { chunk ->
-            emit(chunk)
-        }
+        return client.executeStreaming(prompt, model, tools)
     }
 
     /**
@@ -161,7 +181,11 @@ public open class MultiLLMPromptExecutor(
      * @return A list of `LLMChoice` objects containing the choices generated based on the prompt.
      * @throws IllegalArgumentException If no client is found for the model's provider and no fallback settings are configured.
      */
-    override suspend fun executeMultipleChoices(prompt: Prompt, model: LLModel, tools: List<ToolDescriptor>): List<LLMChoice> {
+    override suspend fun executeMultipleChoices(
+        prompt: Prompt,
+        model: LLModel,
+        tools: List<ToolDescriptor>
+    ): List<LLMChoice> {
         logger.debug { "Executing prompt: $prompt with tools: $tools and model: $model" }
 
         val provider = model.provider
@@ -173,6 +197,7 @@ public open class MultiLLMPromptExecutor(
                 fallback.fallbackModel,
                 tools
             )
+
             else -> throw IllegalArgumentException("No client found for provider: $provider")
         }
 
@@ -196,5 +221,17 @@ public open class MultiLLMPromptExecutor(
         val client = llmClients[provider] ?: throw IllegalArgumentException("No client found for provider: $provider")
 
         return client.moderate(prompt, model)
+    }
+
+    override suspend fun models(): List<LLModel> {
+        logger.debug { "Fetching available models from all clients" }
+
+        return llmClients.values.flatMap { client ->
+            client.models()
+        }
+    }
+
+    override fun close() {
+        llmClients.forEach { (_, client) -> client.close() }
     }
 }

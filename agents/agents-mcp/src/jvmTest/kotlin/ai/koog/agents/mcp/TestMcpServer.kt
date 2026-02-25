@@ -1,21 +1,31 @@
 package ai.koog.agents.mcp
 
-import io.ktor.server.cio.*
-import io.ktor.server.engine.*
-import io.modelcontextprotocol.kotlin.sdk.*
+import ai.koog.utils.io.SuitableForIO
+import io.ktor.server.cio.CIO
+import io.ktor.server.engine.EmbeddedServer
+import io.ktor.server.engine.embeddedServer
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
 import io.modelcontextprotocol.kotlin.sdk.server.mcp
+import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
+import io.modelcontextprotocol.kotlin.sdk.types.Implementation
+import io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities
+import io.modelcontextprotocol.kotlin.sdk.types.TextContent
+import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * A simple MCP server for testing purposes.
@@ -47,32 +57,41 @@ class TestMcpServer(private val port: Int) {
         server.addTool(
             name = "greeting",
             description = "A simple greeting tool",
-            inputSchema = Tool.Input(
-            properties = buildJsonObject {
-                putJsonObject("name") {
-                    put("type", "string")
-                    put("description", "A name to greet")
-                }
-                putJsonObject("title") {
-                    putJsonArray("anyOf") {
-                        addJsonObject {
-                            put("type", "null")
-                        }
-                        addJsonObject {
-                            put("type", "string")
-                        }
+            inputSchema = ToolSchema(
+                properties = buildJsonObject {
+                    putJsonObject("name") {
+                        put("type", "string")
+                        put("description", "A name to greet")
                     }
-                    put("description", "Title to use in the greeting")
-                }
-            },
-            required = listOf("name")
-        )
+                    putJsonObject("title") {
+                        putJsonArray("anyOf") {
+                            addJsonObject {
+                                put("type", "null")
+                            }
+                            addJsonObject {
+                                put("type", "string")
+                            }
+                        }
+                        put("description", "Title to use in the greeting")
+                    }
+                },
+                required = listOf("name")
+            )
         ) { request ->
-            val name = request.arguments["name"]?.jsonPrimitive?.content
-            val title = request.arguments["title"]?.jsonPrimitive?.content
+            val name = request.arguments?.get("name")?.jsonPrimitive?.content
+            val title = request.arguments?.get("title")?.jsonPrimitive?.content
             CallToolResult(
                 content = listOf(TextContent("Hello, ${if (title.isNullOrEmpty()) "" else "$title "}$name!"))
             )
+        }
+
+        // A completely empty tool that accepts nothing and returns nothing
+        server.addTool(
+            name = "empty",
+            description = "An empty tool",
+            inputSchema = ToolSchema()
+        ) {
+            CallToolResult(content = emptyList())
         }
 
         return server
@@ -81,15 +100,23 @@ class TestMcpServer(private val port: Int) {
     /**
      * Starts the MCP server on the specified port.
      */
-    fun start() {
-        if (isRunning) return
+    fun start() = runBlocking {
+        if (isRunning) return@runBlocking
 
-        serverJob = CoroutineScope(Dispatchers.IO).launch {
-            embeddedServer(CIO, host = "0.0.0.0", port = port) {
+        var embeddedServer: EmbeddedServer<*, *>? = null
+        serverJob = CoroutineScope(Dispatchers.SuitableForIO).launch {
+            embeddedServer = embeddedServer(CIO, host = "0.0.0.0", port = port) {
                 mcp {
                     return@mcp configureServer()
                 }
-            }.start(wait = true)
+            }
+            embeddedServer.start(wait = true)
+            isRunning = false
+        }
+
+        while (embeddedServer == null || !embeddedServer.application.isActive) {
+            println("Waiting for the server to start...")
+            delay(100.milliseconds)
         }
 
         isRunning = true

@@ -14,7 +14,6 @@ kotlin {
             dependencies {
                 api(project(":agents:agents-core"))
                 api(project(":prompt:prompt-tokenizer"))
-                api(project(":agents:agents-features:agents-features-common"))
 
                 api(libs.kotlinx.serialization.json)
 
@@ -27,8 +26,6 @@ kotlin {
         jvmMain {
             dependencies {
                 api(project(":prompt:prompt-executor:prompt-executor-clients:prompt-executor-openai-client"))
-                api(libs.ktor.client.cio)
-                api(libs.ktor.server.cio)
             }
         }
 
@@ -45,6 +42,8 @@ kotlin {
                 implementation(kotlin("test"))
                 implementation(kotlin("test-junit5"))
                 implementation(libs.kotlinx.coroutines.test)
+                implementation(libs.ktor.client.cio)
+                implementation(libs.ktor.server.cio)
             }
         }
     }

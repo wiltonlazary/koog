@@ -9,6 +9,8 @@ import ai.koog.prompt.dsl.Prompt
 import ai.koog.prompt.executor.model.PromptExecutor
 import ai.koog.prompt.llm.LLModel
 import ai.koog.prompt.message.Message
+import ai.koog.prompt.streaming.StreamFrame
+import ai.koog.prompt.streaming.toStreamFrames
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.datetime.Clock
@@ -22,7 +24,7 @@ import kotlinx.datetime.Clock
 public class CachedPromptExecutor(
     private val cache: PromptCache,
     private val nested: PromptExecutor,
-    private val clock: Clock = Clock.System
+    private val clock: Clock = kotlin.time.Clock.System
 ) : PromptExecutor {
 
     override suspend fun execute(
@@ -33,8 +35,14 @@ public class CachedPromptExecutor(
         return getOrPut(prompt, tools, model)
     }
 
-    override suspend fun executeStreaming(prompt: Prompt, model: LLModel): Flow<String> =
-        flow { emit(getOrPut(prompt, model).content) }
+    override fun executeStreaming(
+        prompt: Prompt,
+        model: LLModel,
+        tools: List<ToolDescriptor>
+    ): Flow<StreamFrame> =
+        flow {
+            getOrPut(prompt, tools, model).toStreamFrames().forEach { emit(it) }
+        }
 
     private suspend fun getOrPut(prompt: Prompt, model: LLModel): Message.Assistant {
         return cache.get(prompt, emptyList(), clock)
@@ -46,8 +54,15 @@ public class CachedPromptExecutor(
     }
 
     private suspend fun getOrPut(prompt: Prompt, tools: List<ToolDescriptor>, model: LLModel): List<Message.Response> {
-        return cache.get(prompt, tools, clock) ?: nested.execute(prompt, model, tools).also { cache.put(prompt, tools, it) }
+        return cache.get(prompt, tools, clock)
+            ?: nested.execute(prompt, model, tools).also { cache.put(prompt, tools, it) }
     }
 
     override suspend fun moderate(prompt: Prompt, model: LLModel): ModerationResult = nested.moderate(prompt, model)
+
+    override suspend fun models(): List<LLModel> = nested.models()
+
+    override fun close() {
+        nested.close()
+    }
 }

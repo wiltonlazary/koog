@@ -13,9 +13,11 @@ kotlin {
         commonMain {
             dependencies {
                 api(project(":agents:agents-tools"))
-                api(project(":agents:agents-utils"))
+                api(project(":utils"))
                 api(project(":prompt:prompt-executor:prompt-executor-clients"))
-                implementation(project(":prompt:prompt-executor:prompt-executor-clients:prompt-executor-anthropic-client"))
+                implementation(
+                    project(":prompt:prompt-executor:prompt-executor-clients:prompt-executor-anthropic-client")
+                )
                 api(project(":prompt:prompt-llm"))
                 api(project(":prompt:prompt-model"))
                 api(libs.kotlinx.coroutines.core)
@@ -28,25 +30,22 @@ kotlin {
 
         jvmMain {
             dependencies {
-                api(libs.ktor.client.cio)
-                implementation(project(":prompt:prompt-executor:prompt-executor-clients:prompt-executor-anthropic-client"))
-                implementation(libs.aws.sdk.kotlin.bedrockruntime)
+                implementation(
+                    project(":prompt:prompt-executor:prompt-executor-clients:prompt-executor-anthropic-client")
+                )
+                api(libs.aws.sdk.kotlin.bedrockruntime)
             }
         }
 
         commonTest {
             dependencies {
-                implementation(kotlin("test"))
-                implementation(libs.kotlinx.coroutines.test)
-                implementation(libs.kotlinx.serialization.core)
-                implementation(libs.kotlinx.serialization.json)
+                implementation(project(":test-utils"))
             }
         }
 
         jvmTest {
             dependencies {
-                implementation(kotlin("test-junit5"))
-                implementation(libs.junit.jupiter.params)
+                implementation(libs.ktor.client.cio)
             }
         }
     }

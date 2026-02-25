@@ -1,16 +1,11 @@
 package ai.koog.agents.testing.tools
 
 import ai.koog.agents.core.tools.Tool
-import ai.koog.agents.core.tools.ToolArgs
-import ai.koog.agents.core.tools.ToolDescriptor
 import ai.koog.agents.core.tools.ToolRegistry
-import ai.koog.agents.core.tools.ToolResult
 import ai.koog.prompt.dsl.prompt
-import ai.koog.prompt.executor.model.PromptExecutorExt.execute
-import ai.koog.prompt.llm.OllamaModels
+import ai.koog.prompt.executor.ollama.client.OllamaModels
 import ai.koog.prompt.message.Message
 import kotlinx.coroutines.test.runTest
-import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.serializer
 import kotlin.test.Test
@@ -22,20 +17,17 @@ import kotlin.test.assertTrue
 class MockLLMBuilderTests {
 
     // Sample tool for testing
-    private object TestTool : Tool<TestTool.Args, ToolResult.Text>() {
+    private object TestTool : Tool<TestTool.Args, String>(
+        argsSerializer = serializer<Args>(),
+        resultSerializer = serializer<String>(),
+        name = "test_tool",
+        description = "A test tool for testing"
+    ) {
         @Serializable
-        data class Args(val input: String) : ToolArgs
+        data class Args(val input: String)
 
-        override val argsSerializer: KSerializer<Args> = serializer()
-
-        override val descriptor: ToolDescriptor = ToolDescriptor(
-            name = "test_tool",
-            description = "A test tool for testing"
-        )
-
-        override suspend fun execute(args: Args): ToolResult.Text {
-            return ToolResult.Text("Executed with: ${args.input}")
-        }
+        override suspend fun execute(args: Args): String =
+            "Executed with: ${args.input}"
     }
 
     @Test
@@ -51,7 +43,7 @@ class MockLLMBuilderTests {
             user("Say hello to me")
         }
 
-        val response = mockExecutor.execute(prompt, OllamaModels.Meta.LLAMA_3_2)
+        val response = mockExecutor.execute(prompt, OllamaModels.Meta.LLAMA_3_2).single()
         assertEquals("Hello, world!", response.content)
 
         // Test default response
@@ -59,7 +51,7 @@ class MockLLMBuilderTests {
             user("Something unrelated")
         }
 
-        val response2 = mockExecutor.execute(prompt2, OllamaModels.Meta.LLAMA_3_2)
+        val response2 = mockExecutor.execute(prompt2, OllamaModels.Meta.LLAMA_3_2).single()
         assertEquals("Default response", response2.content)
     }
 
@@ -74,7 +66,7 @@ class MockLLMBuilderTests {
             user("exact match query")
         }
 
-        val response = mockExecutor.execute(prompt, OllamaModels.Meta.LLAMA_3_2)
+        val response = mockExecutor.execute(prompt, OllamaModels.Meta.LLAMA_3_2).single()
         assertEquals("Exact match response", response.content)
 
         // Test that partial match doesn't work for exact matching
@@ -82,7 +74,7 @@ class MockLLMBuilderTests {
             user("This contains exact match query somewhere")
         }
 
-        val response2 = mockExecutor.execute(prompt2, OllamaModels.Meta.LLAMA_3_2)
+        val response2 = mockExecutor.execute(prompt2, OllamaModels.Meta.LLAMA_3_2).single()
         assertEquals("Default response", response2.content)
     }
 
@@ -98,7 +90,7 @@ class MockLLMBuilderTests {
             user("This contains partial match somewhere")
         }
 
-        val response = mockExecutor.execute(prompt, OllamaModels.Meta.LLAMA_3_2)
+        val response = mockExecutor.execute(prompt, OllamaModels.Meta.LLAMA_3_2).single()
         assertEquals("Partial match response", response.content)
     }
 
@@ -114,7 +106,7 @@ class MockLLMBuilderTests {
             user("This is a long message that should match the condition")
         }
 
-        val response = mockExecutor.execute(prompt, OllamaModels.Meta.LLAMA_3_2)
+        val response = mockExecutor.execute(prompt, OllamaModels.Meta.LLAMA_3_2).single()
         assertEquals("Conditional response", response.content)
 
         // Test that condition not matching returns default
@@ -122,7 +114,7 @@ class MockLLMBuilderTests {
             user("Short message")
         }
 
-        val response2 = mockExecutor.execute(prompt2, OllamaModels.Meta.LLAMA_3_2)
+        val response2 = mockExecutor.execute(prompt2, OllamaModels.Meta.LLAMA_3_2).single()
         assertEquals("Default response", response2.content)
     }
 
@@ -141,7 +133,7 @@ class MockLLMBuilderTests {
             user("Please use tool to do something")
         }
 
-        val response = mockExecutor.execute(prompt, OllamaModels.Meta.LLAMA_3_2)
+        val response = mockExecutor.execute(prompt, OllamaModels.Meta.LLAMA_3_2).single()
         assertTrue(response is Message.Tool.Call)
         val toolCall = response as Message.Tool.Call
         assertEquals("test_tool", toolCall.tool)
@@ -220,7 +212,7 @@ class MockLLMBuilderTests {
 
         val mockExecutor = getMockExecutor(toolRegistry) {
             // Mock the tool behavior
-            mockTool(TestTool) alwaysReturns ToolResult.Text("Mocked result")
+            mockTool(TestTool) alwaysReturns "Mocked result"
 
             // Set up a tool call that will use the mocked tool
             mockLLMToolCall(TestTool, TestTool.Args("test input")) onRequestContains "use tool"
@@ -231,23 +223,23 @@ class MockLLMBuilderTests {
         }
 
         // Execute the prompt to get a tool call
-        val response = mockExecutor.execute(prompt, OllamaModels.Meta.LLAMA_3_2)
+        val response = mockExecutor.execute(prompt, OllamaModels.Meta.LLAMA_3_2).single()
         assertTrue(response is Message.Tool.Call)
 
         // Now simulate executing the tool
         val toolCall = response as Message.Tool.Call
 
         // Find the tool condition that matches this call
-        val toolCondition = (mockExecutor as MockLLMExecutor).toolActions.firstOrNull { 
-            it.tool.name == toolCall.tool 
+        val toolCondition = (mockExecutor as MockLLMExecutor).toolActions.firstOrNull {
+            it.tool.name == toolCall.tool
         }
 
         assertNotNull(toolCondition)
 
         // Execute the tool and check the result
         val result = toolCondition.invoke(toolCall)
-        assertTrue(result is ToolResult.Text)
-        assertEquals("Mocked result", (result as ToolResult.Text).text)
+        assertTrue(result is String)
+        assertEquals("Mocked result", result)
     }
 
     @Test
@@ -258,8 +250,8 @@ class MockLLMBuilderTests {
 
         val mockExecutor = getMockExecutor(toolRegistry) {
             // Mock the tool behavior with a condition
-            mockTool(TestTool).returns(ToolResult.Text("Specific result")).onArguments(TestTool.Args("specific input"))
-            mockTool(TestTool) alwaysReturns ToolResult.Text("Default result")
+            mockTool(TestTool).returns("Specific result").onArguments(TestTool.Args("specific input"))
+            mockTool(TestTool) alwaysReturns "Default result"
 
             // Set up tool calls
             mockLLMToolCall(TestTool, TestTool.Args("specific input")) onRequestContains "specific"
@@ -271,34 +263,34 @@ class MockLLMBuilderTests {
             user("Please use tool with specific input")
         }
 
-        val specificResponse = mockExecutor.execute(specificPrompt, OllamaModels.Meta.LLAMA_3_2)
+        val specificResponse = mockExecutor.execute(specificPrompt, OllamaModels.Meta.LLAMA_3_2).single()
         assertTrue(specificResponse is Message.Tool.Call)
 
         val specificToolCall = specificResponse as Message.Tool.Call
-        val specificToolCondition = (mockExecutor as MockLLMExecutor).toolActions.first { 
+        val specificToolCondition = (mockExecutor as MockLLMExecutor).toolActions.first {
             it.satisfies(specificToolCall)
         }
 
         val specificResult = specificToolCondition.invoke(specificToolCall)
-        assertTrue(specificResult is ToolResult.Text)
-        assertEquals("Specific result", (specificResult as ToolResult.Text).text)
+        assertTrue(specificResult is String)
+        assertEquals("Specific result", specificResult)
 
         // Test the default behavior
         val otherPrompt = prompt("test-other") {
             user("Please use tool with other input")
         }
 
-        val otherResponse = mockExecutor.execute(otherPrompt, OllamaModels.Meta.LLAMA_3_2)
+        val otherResponse = mockExecutor.execute(otherPrompt, OllamaModels.Meta.LLAMA_3_2).single()
         assertTrue(otherResponse is Message.Tool.Call)
 
         val otherToolCall = otherResponse as Message.Tool.Call
-        val otherToolCondition = (mockExecutor as MockLLMExecutor).toolActions.first { 
+        val otherToolCondition = (mockExecutor as MockLLMExecutor).toolActions.first {
             it.satisfies(otherToolCall)
         }
 
         val otherResult = otherToolCondition.invoke(otherToolCall)
-        assertTrue(otherResult is ToolResult.Text)
-        assertEquals("Default result", (otherResult as ToolResult.Text).text)
+        assertTrue(otherResult is String)
+        assertEquals("Default result", otherResult)
     }
 
     @Test
@@ -313,7 +305,7 @@ class MockLLMBuilderTests {
             // Mock the tool behavior with a custom action
             mockTool(TestTool) alwaysDoes {
                 actionCalled = true
-                ToolResult.Text("Custom action result")
+                "Custom action result"
             }
 
             // Set up a tool call
@@ -324,17 +316,17 @@ class MockLLMBuilderTests {
             user("Please use tool to do something")
         }
 
-        val response = mockExecutor.execute(prompt, OllamaModels.Meta.LLAMA_3_2)
+        val response = mockExecutor.execute(prompt, OllamaModels.Meta.LLAMA_3_2).single()
         assertTrue(response is Message.Tool.Call)
 
         val toolCall = response
-        val toolCondition = (mockExecutor as MockLLMExecutor).toolActions.first { 
+        val toolCondition = (mockExecutor as MockLLMExecutor).toolActions.first {
             it.satisfies(toolCall)
         }
 
         val result = toolCondition.invoke(toolCall)
         assertTrue(actionCalled)
-        assertTrue(result is ToolResult.Text)
-        assertEquals("Custom action result", (result as ToolResult.Text).text)
+        assertTrue(result is String)
+        assertEquals("Custom action result", result)
     }
 }
