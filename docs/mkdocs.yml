@@ -7,7 +7,9 @@ nav:
           - Key features: key-features.md
           - LLM providers: llm-providers.md
           - Glossary: glossary.md
-      - Quickstart: quickstart.md
+      - Quickstart:
+          - quickstart/index.md
+          - Chat agent with memory: quickstart/chat-agent.md
       - Agents:
           - agents/index.md
           - Basic agents: agents/basic-agents.md
@@ -44,12 +46,14 @@ nav:
           - Event handlers: agent-event-handlers.md
           - Tracing: tracing.md
           - Memory: agent-memory.md
+          - Chat Memory: chat-memory.md
           - Long Term Memory: long-term-memory.md
           - Agent Persistence: agent-persistence.md
           - OpenTelemetry:
               - Overview: opentelemetry-support.md
               - Langfuse Exporter: opentelemetry-langfuse-exporter.md
               - Weave Exporter: opentelemetry-weave-exporter.md
+          - Custom features: custom-features.md
       - History compression: history-compression.md
       - Model Context Protocol: model-context-protocol.md
       - A2A Protocol:
@@ -95,6 +99,8 @@ nav:
   - API reference: https://api.koog.ai/
 
 markdown_extensions:
+  - toc:
+      title: On this page
   - pymdownx.highlight:
       anchor_linenums: true
       line_spans: __span
@@ -127,7 +133,7 @@ plugins:
   - search
   - redirects:
       redirect_maps:
-        'simple-api-getting-started.md': 'quickstart.md'
+        'simple-api-getting-started.md': 'quickstart/index.md'
         'advanced-tool-implementation.md': 'class-based-tools.md'
         'key-concepts.md': 'glossary.md'
         'single-run-agents.md': 'agents/basic-agents.md'
@@ -146,7 +152,8 @@ plugins:
           - llm-providers.md: This page provides a list of LLM providers supported by Koog.
           - glossary.md: This page provides explanations of key terms and concepts related to Koog and agentic development.
         Quickstart:
-          - quickstart.md: This page provides a guide on installing Koog and creating a minimal AI agent.
+          - quickstart/index.md: This page provides a guide on installing Koog and creating a minimal AI agent.
+          - quickstart/chat-agent.md: This page provides a quickstart guide for building a conversational chat agent with persistent memory using the ChatMemory feature.
         Agents:
           - agents/basic-agents.md: This guide lets you build a basic agent with minimum required configuration.
           - agents/graph-based-agents.md: This page explains how you can create agents that handle complex workflows by defining custom strategies, tools, configurations, and custom input and output types.
@@ -211,6 +218,7 @@ plugins:
           - tracing.md: This page includes details about the Tracing feature, which provides comprehensive tracing capabilities for AI agents. The page includes configuration and initialization details, examples and quickstart, details about error handling and FAQ and troubleshooting.
           - agent-memory.md: This page provides details about the AgentMemory feature which lets AI agents store, retrieve, and use information across conversations. The page includes configuration and initialization details, examples and quickstart, best practices, error handling and FAQ and troubleshooting.
           - agent-persistence.md: This page describes Agent Persistence, which is a feature that lets you save and restore the state of an agent at specific points during execution. The page includes key concepts, prerequisites, installation instructions, configuration, and basic and advanced usage guides.
+          - custom-features.md: This page provides details on how to implement custom features in Koog. The page includes information about the basic feature structure and implementation, as well as a practical example of a custom feature.
         OpenTelemetry:
           - opentelemetry-support.md: This page provides details about the support for OpenTelemetry with the Koog agentic framework for tracing and monitoring AI agents. The page includes details about installation and configuration, span types and attributes, and common exporters.
           - opentelemetry-langfuse-exporter.md: This page provides information about Koog's built-in support for exporting agent traces to Langfuse, a platform for observability and analytics of AI applications. The page provides details about LangFuse integration configuration and an example of its use.
@@ -236,11 +244,11 @@ theme:
     - content.action.edit
     - content.tabs.link
     - content.footnote.tooltips
-    - navigation.expand
     - navigation.tabs
     - navigation.tabs.sticky
     - navigation.instant
     - navigation.indexes
+    - navigation.tracking
   color_mode: light
   nav_style: light
   user_color_mode_toggle: true
