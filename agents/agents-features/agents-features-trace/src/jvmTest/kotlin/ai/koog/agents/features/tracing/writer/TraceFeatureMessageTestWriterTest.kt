@@ -2,7 +2,9 @@ package ai.koog.agents.features.tracing.writer
 
 import ai.koog.agents.core.annotation.InternalAgentsApi
 import ai.koog.agents.core.dsl.builder.forwardTo
+import ai.koog.agents.core.dsl.builder.node
 import ai.koog.agents.core.dsl.builder.strategy
+import ai.koog.agents.core.dsl.builder.subgraph
 import ai.koog.agents.core.dsl.extension.nodeAppendPrompt
 import ai.koog.agents.core.dsl.extension.nodeExecuteTool
 import ai.koog.agents.core.dsl.extension.nodeLLMRequest
@@ -21,7 +23,6 @@ import ai.koog.agents.core.feature.model.events.ToolCallCompletedEvent
 import ai.koog.agents.core.feature.model.events.ToolCallStartingEvent
 import ai.koog.agents.core.tools.ToolDescriptor
 import ai.koog.agents.core.tools.ToolRegistry
-import ai.koog.agents.core.utils.SerializationUtils
 import ai.koog.agents.features.tracing.feature.Tracing
 import ai.koog.agents.features.tracing.mock.RecursiveTool
 import ai.koog.agents.features.tracing.mock.TestFeatureMessageWriter
@@ -43,12 +44,13 @@ import ai.koog.prompt.llm.toModelInfo
 import ai.koog.prompt.message.Message
 import ai.koog.prompt.message.ResponseMetaInfo
 import ai.koog.prompt.streaming.StreamFrame
+import ai.koog.serialization.kotlinx.KotlinxSerializer
+import ai.koog.serialization.typeToken
 import ai.koog.utils.io.use
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
-import kotlin.reflect.typeOf
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -56,6 +58,7 @@ import kotlin.test.assertFails
 import kotlin.time.Instant
 
 class TraceFeatureMessageTestWriterTest {
+    private val serializer = KotlinxSerializer()
 
     private val targetLogger = TestLogger("test-logger")
 
@@ -320,9 +323,9 @@ class TraceFeatureMessageTestWriterTest {
                         runId = writer.runId,
                         nodeName = nodeWithErrorName,
                         input = @OptIn(InternalAgentsApi::class)
-                        SerializationUtils.encodeDataToJsonElementOrNull(
-                            data = "",
-                            dataType = typeOf<String>()
+                        serializer.encodeToJSONElement(
+                            "",
+                            typeToken<String>()
                         ),
                         error = AIAgentError(testErrorMessage, expectedStackTrace, null),
                         timestamp = testClock.now().toEpochMilliseconds()
@@ -356,7 +359,7 @@ class TraceFeatureMessageTestWriterTest {
 
         val testLLMResponse = "Default test response"
 
-        val testExecutor = getMockExecutor {
+        val testExecutor = getMockExecutor(serializer) {
             mockLLMAnswer(testLLMResponse).asDefaultResponse onUserRequestEquals userPrompt
         }
 
@@ -615,15 +618,15 @@ class TraceFeatureMessageTestWriterTest {
             val runIdFromEvents = (actualEvents.first() as SubgraphExecutionStartingEvent).runId
 
             val expectedInput = @OptIn(InternalAgentsApi::class)
-            SerializationUtils.encodeDataToJsonElementOrNull(
-                data = inputRequest,
-                dataType = typeOf<String>()
+            serializer.encodeToJSONElement(
+                inputRequest,
+                typeToken<String>()
             )
 
             val expectedOutput = @OptIn(InternalAgentsApi::class)
-            SerializationUtils.encodeDataToJsonElementOrNull(
-                data = agentOutput,
-                dataType = typeOf<String>()
+            serializer.encodeToJSONElement(
+                agentOutput,
+                typeToken<String>()
             )
 
             val expectedEvents = listOf(
@@ -707,9 +710,9 @@ class TraceFeatureMessageTestWriterTest {
             val runIdFromEvents = (actualEvents.first() as SubgraphExecutionStartingEvent).runId
 
             val expectedInput = @OptIn(InternalAgentsApi::class)
-            SerializationUtils.encodeDataToJsonElementOrNull(
-                data = inputRequest,
-                dataType = typeOf<String>()
+            serializer.encodeToJSONElement(
+                inputRequest,
+                typeToken<String>()
             )
 
             val expectedEvents = listOf(

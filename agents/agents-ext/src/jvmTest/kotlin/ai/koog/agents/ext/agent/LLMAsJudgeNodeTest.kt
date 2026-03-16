@@ -20,12 +20,12 @@ import ai.koog.prompt.message.Message
 import ai.koog.prompt.message.ResponseMetaInfo
 import ai.koog.prompt.structure.json.generator.BasicJsonSchemaGenerator
 import ai.koog.prompt.structure.json.generator.StandardJsonSchemaGenerator
+import ai.koog.serialization.typeToken
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
-import kotlin.reflect.typeOf
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -84,7 +84,7 @@ class LLMAsJudgeNodeTest {
         val context = AIAgentGraphContext(
             environment = mockEnv,
             agentId = "test-agent",
-            agentInputType = typeOf<String>(),
+            agentInputType = typeToken<String>(),
             agentInput = "Hello",
             config = mockk(),
             llm = mockLLM,
@@ -104,7 +104,7 @@ class LLMAsJudgeNodeTest {
 
         val anotherModel = OllamaModels.Meta.LLAMA_4_SCOUT
 
-        val llmJudgeNode by subgraphContext.llmAsAJudge<Int>(
+        val llmJudgeNode by llmAsAJudge<Int>(
             llmModel = anotherModel,
             task = CRITIC_TASK
         )

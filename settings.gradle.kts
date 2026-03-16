@@ -19,6 +19,8 @@ include(":agents:agents-features:agents-features-memory")
 include(":agents:agents-features:agents-features-opentelemetry")
 include(":agents:agents-features:agents-features-sql")
 include(":agents:agents-features:agents-features-chat-memory-sql")
+include(":agents:agents-features:agents-features-chat-history-jdbc")
+include(":agents:agents-features:agents-features-persistence-jdbc")
 include(":agents:agents-features:agents-features-trace")
 include(":agents:agents-features:agents-features-tokenizer")
 include(":agents:agents-features:agents-features-snapshot")
@@ -55,7 +57,6 @@ include(":prompt:prompt-executor:prompt-executor-clients:prompt-executor-openai-
 include(":prompt:prompt-executor:prompt-executor-clients:prompt-executor-openrouter-client")
 include(":prompt:prompt-executor:prompt-executor-clients:prompt-executor-dashscope-client")
 
-include(":prompt:prompt-executor:prompt-executor-llms")
 include(":prompt:prompt-executor:prompt-executor-llms-all")
 include(":prompt:prompt-executor:prompt-executor-model")
 include(":prompt:prompt-llm")
@@ -87,7 +88,14 @@ include(":http-client:http-client-ktor")
 include(":http-client:http-client-okhttp")
 include(":http-client:http-client-java")
 
+include(":serialization:serialization-core")
+include(":serialization:serialization-test")
+include(":serialization:serialization-jackson")
+
 include(":koog-spring-boot-starter")
+
+include(":koog-spring-ai:koog-spring-ai-starter-model-chat")
+include(":koog-spring-ai:koog-spring-ai-starter-model-embedding")
 
 include(":koog-ktor")
 include(":docs")

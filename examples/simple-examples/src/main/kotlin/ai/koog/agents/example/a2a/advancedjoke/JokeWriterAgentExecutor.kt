@@ -20,7 +20,7 @@ import ai.koog.agents.a2a.server.feature.withA2AAgentServer
 import ai.koog.agents.core.agent.GraphAIAgent
 import ai.koog.agents.core.agent.config.AIAgentConfig
 import ai.koog.agents.core.agent.context.agentInput
-import ai.koog.agents.core.dsl.builder.forwardTo
+import ai.koog.agents.core.dsl.builder.node
 import ai.koog.agents.core.dsl.builder.strategy
 import ai.koog.agents.core.dsl.extension.nodeLLMRequestStructured
 import ai.koog.agents.core.dsl.extension.onIsInstance
@@ -40,7 +40,7 @@ import ai.koog.prompt.xml.xml
 import kotlin.time.Clock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlin.reflect.typeOf
+import ai.koog.serialization.typeToken
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -85,8 +85,8 @@ private fun jokeWriterAgent(
     )
 
     return GraphAIAgent(
-        inputType = typeOf<A2AMessage>(),
-        outputType = typeOf<Unit>(),
+        inputType = typeToken<A2AMessage>(),
+        outputType = typeToken<Unit>(),
         promptExecutor = promptExecutor,
         strategy = jokeWriterStrategy(),
         agentConfig = agentConfig,

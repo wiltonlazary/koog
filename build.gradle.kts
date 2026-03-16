@@ -94,6 +94,8 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        // For testing dev versions of dependencies
+        mavenLocal()
     }
 }
 
@@ -223,6 +225,8 @@ dependencies {
     dokka(project(":embeddings:embeddings-base"))
     dokka(project(":embeddings:embeddings-llm"))
     dokka(project(":koog-ktor"))
+    dokka(project(":koog-spring-ai:koog-spring-ai-starter-model-chat"))
+    dokka(project(":koog-spring-ai:koog-spring-ai-starter-model-embedding"))
     dokka(project(":koog-spring-boot-starter"))
     dokka(project(":prompt:prompt-cache:prompt-cache-files"))
     dokka(project(":prompt:prompt-cache:prompt-cache-model"))
@@ -239,7 +243,6 @@ dependencies {
     dokka(project(":prompt:prompt-executor:prompt-executor-clients:prompt-executor-openai-client-base"))
     dokka(project(":prompt:prompt-executor:prompt-executor-clients:prompt-executor-openrouter-client"))
     dokka(project(":prompt:prompt-executor:prompt-executor-clients:prompt-executor-dashscope-client"))
-    dokka(project(":prompt:prompt-executor:prompt-executor-llms"))
     dokka(project(":prompt:prompt-executor:prompt-executor-llms-all"))
     dokka(project(":prompt:prompt-executor:prompt-executor-model"))
     dokka(project(":prompt:prompt-llm"))

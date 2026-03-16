@@ -1,4 +1,6 @@
 import ai.koog.gradle.publish.maven.Publishing.publishToMaven
+import org.gradle.kotlin.dsl.implementation
+import org.gradle.kotlin.dsl.project
 
 group = rootProject.group
 version = rootProject.version
@@ -51,11 +53,19 @@ kotlin {
             }
         }
 
+        jvmCommonMain {
+            dependencies {
+                implementation(libs.kotlinx.coroutines.jdk9)
+                implementation(project(":serialization:serialization-jackson"))
+            }
+        }
+
         jvmTest {
             dependencies {
-                implementation("org.jetbrains.lincheck:lincheck:3.4")
-                implementation(libs.ktor.client.cio)
                 implementation(project(":integration-tests"))
+                implementation(project(":serialization:serialization-jackson"))
+
+                implementation(libs.ktor.client.cio)
             }
         }
     }

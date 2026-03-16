@@ -39,8 +39,8 @@ import ai.koog.prompt.message.RequestMetaInfo
 import ai.koog.prompt.message.ResponseMetaInfo
 import ai.koog.prompt.params.LLMParams
 import ai.koog.prompt.streaming.StreamFrame
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
+import ai.koog.serialization.JSONObject
+import ai.koog.serialization.JSONPrimitive
 import kotlin.time.Clock
 import kotlin.time.Instant
 
@@ -144,7 +144,7 @@ internal object AIAgentFeatureTestAPI {
             executionInfo = agentExecutionInfo("test-agent-id", "test-strategy-name", nodeName),
             runId = "test-run-id",
             nodeName = nodeName,
-            input = JsonPrimitive("test-input"),
+            input = JSONPrimitive("test-input"),
             timestamp = testClock.now().toEpochMilliseconds()
         )
     }
@@ -156,8 +156,8 @@ internal object AIAgentFeatureTestAPI {
             executionInfo = agentExecutionInfo("test-agent-id", "test-strategy-name", nodeName),
             runId = "test-run-id",
             nodeName = nodeName,
-            input = JsonPrimitive("test-input"),
-            output = JsonPrimitive("test-output"),
+            input = JSONPrimitive("test-input"),
+            output = JSONPrimitive("test-output"),
             timestamp = testClock.now().toEpochMilliseconds()
         )
     }
@@ -169,7 +169,7 @@ internal object AIAgentFeatureTestAPI {
             executionInfo = agentExecutionInfo("test-agent-id", "test-strategy-name", nodeName),
             runId = "test-run-id",
             nodeName = nodeName,
-            input = JsonPrimitive("test-input"),
+            input = JSONPrimitive("test-input"),
             error = AIAgentError(
                 message = "test-error-message",
                 stackTrace = "test-error-stacktrace",
@@ -186,7 +186,7 @@ internal object AIAgentFeatureTestAPI {
             executionInfo = agentExecutionInfo("test-agent-id", "test-strategy-name", subgraphName),
             runId = "test-run-id",
             subgraphName = subgraphName,
-            input = JsonPrimitive("test-input"),
+            input = JSONPrimitive("test-input"),
             timestamp = testClock.now().toEpochMilliseconds()
         )
     }
@@ -198,8 +198,8 @@ internal object AIAgentFeatureTestAPI {
             executionInfo = agentExecutionInfo("test-agent-id", "test-strategy-name", subgraphName),
             runId = "test-run-id",
             subgraphName = subgraphName,
-            input = JsonPrimitive("test-input"),
-            output = JsonPrimitive("test-output"),
+            input = JSONPrimitive("test-input"),
+            output = JSONPrimitive("test-output"),
             timestamp = testClock.now().toEpochMilliseconds()
         )
     }
@@ -211,7 +211,7 @@ internal object AIAgentFeatureTestAPI {
             executionInfo = agentExecutionInfo("test-agent-id", "test-strategy-name", subgraphName),
             runId = "test-run-id",
             subgraphName = subgraphName,
-            input = JsonPrimitive("test-input"),
+            input = JSONPrimitive("test-input"),
             error = AIAgentError(
                 message = "test-error-message",
                 stackTrace = "test-error-stacktrace",
@@ -227,7 +227,7 @@ internal object AIAgentFeatureTestAPI {
         runId = "test-run-id",
         toolCallId = "test-tool-call-id",
         toolName = "test-tool-name",
-        toolArgs = JsonObject(mapOf("test-argument-key" to JsonPrimitive("test-argument-value"))),
+        toolArgs = JSONObject(mapOf("test-argument-key" to JSONPrimitive("test-argument-value"))),
         timestamp = testClock.now().toEpochMilliseconds()
     )
 
@@ -237,7 +237,7 @@ internal object AIAgentFeatureTestAPI {
         runId = "test-run-id",
         toolCallId = "test-tool-call-id",
         toolName = "test-tool-name",
-        toolArgs = JsonObject(mapOf("test-argument-key" to JsonPrimitive("test-argument-value"))),
+        toolArgs = JSONObject(mapOf("test-argument-key" to JSONPrimitive("test-argument-value"))),
         toolDescription = "test-tool-description",
         message = "test-error-message",
         error = AIAgentError("test-error-message", "test-error-stacktrace", "test-error-cause"),
@@ -250,7 +250,7 @@ internal object AIAgentFeatureTestAPI {
         runId = "test-run-id",
         toolCallId = "test-tool-call-id",
         toolName = "test-tool-name",
-        toolArgs = JsonObject(mapOf("test-argument-key" to JsonPrimitive("test-argument-value"))),
+        toolArgs = JSONObject(mapOf("test-argument-key" to JSONPrimitive("test-argument-value"))),
         toolDescription = "test-tool-description",
         error = AIAgentError(
             message = "test-error-message",
@@ -266,9 +266,9 @@ internal object AIAgentFeatureTestAPI {
         runId = "test-run-id",
         toolCallId = "test-tool-call-id",
         toolName = "test-tool-name",
-        toolArgs = JsonObject(mapOf("test-argument-key" to JsonPrimitive("test-argument-value"))),
+        toolArgs = JSONObject(mapOf("test-argument-key" to JSONPrimitive("test-argument-value"))),
         toolDescription = "test-tool-description",
-        result = JsonPrimitive("test-result"),
+        result = JSONPrimitive("test-result"),
         timestamp = testClock.now().toEpochMilliseconds()
     )
 

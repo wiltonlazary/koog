@@ -12,14 +12,17 @@ kotlin {
     sourceSets {
         commonMain {
             dependencies {
-                api(libs.kotlinx.serialization.json)
                 api(project(":rag:rag-base"))
+                api(project(":serialization:serialization-core"))
                 implementation(project(":prompt:prompt-markdown"))
                 implementation(project(":prompt:prompt-xml"))
+
+                api(libs.kotlinx.serialization.json)
+                api(libs.kotlinx.schema.generator.json)
             }
         }
 
-        jvmMain {
+        jvmCommonMain {
             dependencies {
                 api(kotlin("reflect"))
             }
