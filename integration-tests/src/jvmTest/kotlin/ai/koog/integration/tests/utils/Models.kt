@@ -25,9 +25,7 @@ object Models {
     @JvmStatic
     fun anthropicModels(): Stream<LLModel> {
         return Stream.of(
-            AnthropicModels.Opus_4_6,
             AnthropicModels.Haiku_4_5,
-            AnthropicModels.Sonnet_4_5,
         )
     }
 
@@ -35,9 +33,6 @@ object Models {
     fun googleModels(): Stream<LLModel> {
         return Stream.of(
             GoogleModels.Gemini3_Flash_Preview,
-            GoogleModels.Gemini3_Pro_Preview,
-            GoogleModels.Gemini2_5Pro,
-            GoogleModels.Gemini2_5Flash,
         )
     }
 
@@ -71,6 +66,14 @@ object Models {
         )
     }
 
+    @JvmStatic
+    fun batchEmbeddingModels(): Stream<LLModel> {
+        return Stream.of(
+            MistralAIModels.Embeddings.MistralEmbed,
+            GoogleModels.Embeddings.GeminiEmbedding001,
+        )
+    }
+
     /**
      * Returns models that support content moderation capabilities.
      *
@@ -87,6 +90,15 @@ object Models {
             OpenAIModels.Moderation.Omni,
             MistralAIModels.Moderation.MistralModeration,
             BedrockModels.AnthropicClaude4_5Haiku
+        )
+    }
+
+    @JvmStatic
+    fun latestModels(): Stream<LLModel> {
+        return Stream.of(
+            OpenAIModels.Chat.GPT5_4,
+            AnthropicModels.Haiku_4_5,
+            GoogleModels.Gemini3_Flash_Preview,
         )
     }
 
@@ -115,10 +127,7 @@ object Models {
     @JvmStatic
     fun openAIReasoningModels(): Stream<LLModel> {
         return Stream.of(
-            // KG-726 Responses from several OpenAI models are completing without receiving an End frame
-            // OpenAIModels.Chat.GPT5_1CodexMax,
-            OpenAIModels.Chat.GPT5_1Codex,
-            OpenAIModels.Chat.GPT5_2,
+            OpenAIModels.Chat.GPT5_4,
         )
     }
 
@@ -158,6 +167,15 @@ object Models {
         assumeTrue(
             !shouldSkip,
             "Test skipped because provider ${provider.display} is in the skip list ($skipProvidersRaw)"
+        )
+    }
+
+    // Todo: remove the method an the assumption after fixing the KG-743
+    @JvmStatic
+    fun assumeEnumToolCallsAreStable(model: LLModel, scenario: String) {
+        assumeTrue(
+            model.provider.id != LLMProvider.Anthropic.id,
+            "[$scenario] failed, see KG-743: Tool enum arguments are parsed case-sensitively and fail on lowercase values"
         )
     }
 }

@@ -1,8 +1,8 @@
 package ai.koog.agents.features.opentelemetry.integration.langfuse
 
 import ai.koog.agents.features.opentelemetry.attribute.CustomAttribute
+import ai.koog.agents.features.opentelemetry.attribute.GenAIAttributes
 import ai.koog.agents.features.opentelemetry.attribute.KoogAttributes
-import ai.koog.agents.features.opentelemetry.attribute.SpanAttributes
 import ai.koog.agents.features.opentelemetry.event.AssistantMessageEvent
 import ai.koog.agents.features.opentelemetry.event.ChoiceEvent
 import ai.koog.agents.features.opentelemetry.event.EventBodyFields
@@ -39,14 +39,10 @@ internal class LangfuseSpanAdapter(
         when (span.type) {
             SpanType.INVOKE_AGENT -> {
                 val runId =
-                    span.attributes.find { attribute -> attribute.key == SpanAttributes.Conversation.Id("").key }?.value
+                    span.attributes.find { attribute -> attribute.key == GenAIAttributes.Conversation.Id("").key }?.value
 
                 runId?.let { runId ->
                     span.addAttribute(CustomAttribute("langfuse.session.id", runId))
-                }
-
-                traceAttributes.forEach { attribute ->
-                    span.addAttribute(attribute)
                 }
             }
 
@@ -89,6 +85,11 @@ internal class LangfuseSpanAdapter(
             }
 
             else -> {}
+        }
+        // adding attributes to all spans as per Langfuse recommendation for OTEL instrumentation:
+        // https://langfuse.com/integrations/native/opentelemetry#propagating-attributes
+        traceAttributes.forEach { attribute ->
+            span.addAttribute(attribute)
         }
     }
 

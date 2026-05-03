@@ -6,7 +6,6 @@ import ai.koog.agents.core.feature.model.events.AgentClosingEvent
 import ai.koog.agents.core.feature.model.events.AgentCompletedEvent
 import ai.koog.agents.core.feature.model.events.AgentExecutionFailedEvent
 import ai.koog.agents.core.feature.model.events.AgentStartingEvent
-import ai.koog.agents.core.feature.model.events.FunctionalStrategyStartingEvent
 import ai.koog.agents.core.feature.model.events.GraphStrategyStartingEvent
 import ai.koog.agents.core.feature.model.events.LLMCallCompletedEvent
 import ai.koog.agents.core.feature.model.events.LLMCallStartingEvent
@@ -21,6 +20,7 @@ import ai.koog.agents.core.feature.model.events.StrategyCompletedEvent
 import ai.koog.agents.core.feature.model.events.StrategyEventGraph
 import ai.koog.agents.core.feature.model.events.StrategyEventGraphEdge
 import ai.koog.agents.core.feature.model.events.StrategyEventGraphNode
+import ai.koog.agents.core.feature.model.events.StrategyStartingEvent
 import ai.koog.agents.core.feature.model.events.SubgraphExecutionCompletedEvent
 import ai.koog.agents.core.feature.model.events.SubgraphExecutionFailedEvent
 import ai.koog.agents.core.feature.model.events.SubgraphExecutionStartingEvent
@@ -94,7 +94,8 @@ internal object AIAgentFeatureTestAPI {
         error = AIAgentError(
             message = "test-error-message",
             stackTrace = "test-error-stacktrace",
-            cause = "test-error-cause"
+            cause = "test-error-cause",
+            type = "test-error-type"
         ),
         timestamp = testClock.now().toEpochMilliseconds()
     )
@@ -116,7 +117,7 @@ internal object AIAgentFeatureTestAPI {
 
     internal val functionalStrategyStartingEvent = run {
         val strategyName = "test-strategy-name"
-        FunctionalStrategyStartingEvent(
+        StrategyStartingEvent(
             eventId = "test-event-id",
             executionInfo = agentExecutionInfo("test-agent-id", strategyName),
             runId = "test-run-id",
@@ -173,7 +174,8 @@ internal object AIAgentFeatureTestAPI {
             error = AIAgentError(
                 message = "test-error-message",
                 stackTrace = "test-error-stacktrace",
-                cause = "test-error-cause"
+                cause = "test-error-cause",
+                type = "test-error-type"
             ),
             timestamp = testClock.now().toEpochMilliseconds()
         )
@@ -215,7 +217,8 @@ internal object AIAgentFeatureTestAPI {
             error = AIAgentError(
                 message = "test-error-message",
                 stackTrace = "test-error-stacktrace",
-                cause = "test-error-cause"
+                cause = "test-error-cause",
+                type = "test-error-type"
             ),
             timestamp = testClock.now().toEpochMilliseconds()
         )
@@ -240,7 +243,12 @@ internal object AIAgentFeatureTestAPI {
         toolArgs = JSONObject(mapOf("test-argument-key" to JSONPrimitive("test-argument-value"))),
         toolDescription = "test-tool-description",
         message = "test-error-message",
-        error = AIAgentError("test-error-message", "test-error-stacktrace", "test-error-cause"),
+        error = AIAgentError(
+            message = "test-error-message",
+            stackTrace = "test-error-stacktrace",
+            cause = "test-error-cause",
+            type = "test-error-type"
+        ),
         timestamp = testClock.now().toEpochMilliseconds()
     )
 
@@ -255,7 +263,8 @@ internal object AIAgentFeatureTestAPI {
         error = AIAgentError(
             message = "test-error-message",
             stackTrace = "test-error-stacktrace",
-            cause = "test-error-cause"
+            cause = "test-error-cause",
+            type = "test-error-type"
         ),
         timestamp = testClock.now().toEpochMilliseconds()
     )
@@ -371,7 +380,8 @@ internal object AIAgentFeatureTestAPI {
         error = AIAgentError(
             message = "test-error-message",
             stackTrace = "test-error-stacktrace",
-            cause = "test-error-cause"
+            cause = "test-error-cause",
+            type = "test-error-type"
         ),
         timestamp = testClock.now().toEpochMilliseconds(),
     )

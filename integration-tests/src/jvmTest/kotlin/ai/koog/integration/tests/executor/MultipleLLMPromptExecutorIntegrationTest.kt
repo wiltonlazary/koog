@@ -21,13 +21,38 @@ class MultipleLLMPromptExecutorIntegrationTest : ExecutorIntegrationTestBase() {
 
     companion object {
         @JvmStatic
+        fun bedrockMarkdownScenarioModelCombinations(): Stream<Arguments> {
+            return Models.bedrockModels().flatMap { model ->
+                listOf(
+                    MarkdownTestScenario.BASIC_MARKDOWN,
+                ).map { scenario -> Arguments.of(scenario, model) }.stream()
+            }
+        }
+
+        @JvmStatic
+        fun bedrockTextScenarioModelCombinations(): Stream<Arguments> {
+            return Models.bedrockModels().flatMap { model ->
+                listOf(
+                    TextTestScenario.BASIC_TEXT,
+                ).map { scenario -> Arguments.of(scenario, model) }.stream()
+            }
+        }
+
+        @JvmStatic
         fun markdownScenarioModelCombinations(): Stream<Arguments> {
             return MediaTestScenarios.markdownScenarioModelCombinations()
         }
 
         @JvmStatic
         fun imageScenarioModelCombinations(): Stream<Arguments> {
-            return MediaTestScenarios.imageScenarioModelCombinations()
+            return listOf(
+                ImageTestScenario.BASIC_PNG,
+                ImageTestScenario.BASIC_JPG,
+            ).flatMap { scenario ->
+                MediaTestScenarios.models.map { model ->
+                    Arguments.of(scenario, model)
+                }
+            }.stream()
         }
 
         @JvmStatic
@@ -38,6 +63,17 @@ class MultipleLLMPromptExecutorIntegrationTest : ExecutorIntegrationTestBase() {
         @JvmStatic
         fun audioScenarioModelCombinations(): Stream<Arguments> {
             return MediaTestScenarios.audioScenarioModelCombinations()
+        }
+
+        @JvmStatic
+        fun providersWithModelsRequestSupport(): Stream<Arguments> {
+            return Stream.of(
+                LLMProvider.OpenAI,
+                LLMProvider.MistralAI,
+                LLMProvider.OpenRouter,
+                LLMProvider.Google,
+                LLMProvider.Anthropic
+            ).map { provider -> Arguments.of(provider) }
         }
     }
 
@@ -56,11 +92,16 @@ class MultipleLLMPromptExecutorIntegrationTest : ExecutorIntegrationTestBase() {
     override fun getExecutor(model: LLModel): PromptExecutor = executor
 
     @ParameterizedTest
-    @MethodSource("markdownScenarioModelCombinations")
+    @MethodSource("markdownScenarioModelCombinations", "bedrockMarkdownScenarioModelCombinations")
     override fun integration_testMarkdownProcessingBasic(
         scenario: MarkdownTestScenario,
         model: LLModel
     ) {
+        assumeTrue(
+            model.provider != LLMProvider.Bedrock,
+            "When Bedrock LLM client is used with InvokeModel API, only text messages are supported."
+        )
+
         super.integration_testMarkdownProcessingBasic(scenario, model)
     }
 
@@ -71,8 +112,13 @@ class MultipleLLMPromptExecutorIntegrationTest : ExecutorIntegrationTestBase() {
     }
 
     @ParameterizedTest
-    @MethodSource("textScenarioModelCombinations")
+    @MethodSource("textScenarioModelCombinations", "bedrockTextScenarioModelCombinations")
     override fun integration_testTextProcessingBasic(scenario: TextTestScenario, model: LLModel) {
+        assumeTrue(
+            model.provider != LLMProvider.Bedrock,
+            "When Bedrock LLM client is used with InvokeModel API, only text messages are supported."
+        )
+
         super.integration_testTextProcessingBasic(scenario, model)
     }
 
@@ -90,91 +136,103 @@ class MultipleLLMPromptExecutorIntegrationTest : ExecutorIntegrationTestBase() {
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.utils.Models#allCompletionModels")
+    @MethodSource("ai.koog.integration.tests.utils.Models#latestModels")
     override fun integration_testExecuteStreaming(model: LLModel) {
         super.integration_testExecuteStreaming(model)
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.utils.Models#allCompletionModels")
+    @MethodSource("ai.koog.integration.tests.utils.Models#latestModels")
     override fun integration_testExecuteStreamingWithTools(model: LLModel) {
         super.integration_testExecuteStreamingWithTools(model)
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.utils.Models#allCompletionModels")
+    @MethodSource("ai.koog.integration.tests.utils.Models#openAIReasoningModels")
+    override fun integration_testReasoningStreamingSummaryDeltas(model: LLModel) {
+        super.integration_testReasoningStreamingSummaryDeltas(model)
+    }
+
+    @ParameterizedTest
+    @MethodSource("ai.koog.integration.tests.utils.Models#openAIReasoningModels")
+    override fun integration_testReasoningStreamingWithEncryptedContent(model: LLModel) {
+        super.integration_testReasoningStreamingWithEncryptedContent(model)
+    }
+
+    @ParameterizedTest
+    @MethodSource("ai.koog.integration.tests.utils.Models#latestModels")
     override fun integration_testToolWithRequiredParams(model: LLModel) {
         super.integration_testToolWithRequiredParams(model)
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.utils.Models#allCompletionModels")
+    @MethodSource("ai.koog.integration.tests.utils.Models#latestModels")
     override fun integration_testToolWithNotRequiredOptionalParams(model: LLModel) {
         super.integration_testToolWithNotRequiredOptionalParams(model)
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.utils.Models#allCompletionModels")
+    @MethodSource("ai.koog.integration.tests.utils.Models#latestModels")
     override fun integration_testToolWithOptionalParams(model: LLModel) {
         super.integration_testToolWithOptionalParams(model)
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.utils.Models#allCompletionModels")
+    @MethodSource("ai.koog.integration.tests.utils.Models#latestModels")
     override fun integration_testToolWithNoParams(model: LLModel) {
         super.integration_testToolWithNoParams(model)
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.utils.Models#allCompletionModels")
+    @MethodSource("ai.koog.integration.tests.utils.Models#latestModels")
     override fun integration_testToolWithListEnumParams(model: LLModel) {
         super.integration_testToolWithListEnumParams(model)
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.utils.Models#allCompletionModels")
+    @MethodSource("ai.koog.integration.tests.utils.Models#latestModels")
     override fun integration_testToolWithNestedListParams(model: LLModel) {
         super.integration_testToolWithNestedListParams(model)
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.utils.Models#allCompletionModels")
+    @MethodSource("ai.koog.integration.tests.utils.Models#latestModels")
     override fun integration_testToolsWithNullParams(model: LLModel) {
         super.integration_testToolsWithNullParams(model)
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.utils.Models#allCompletionModels")
+    @MethodSource("ai.koog.integration.tests.utils.Models#latestModels")
     override fun integration_testToolsWithAnyOfParams(model: LLModel) {
         super.integration_testToolsWithAnyOfParams(model)
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.utils.Models#allCompletionModels")
+    @MethodSource("ai.koog.integration.tests.utils.Models#latestModels")
     override fun integration_testMarkdownStructuredDataStreaming(model: LLModel) {
         super.integration_testMarkdownStructuredDataStreaming(model)
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.utils.Models#allCompletionModels")
+    @MethodSource("ai.koog.integration.tests.utils.Models#latestModels")
     override fun integration_testToolChoiceRequired(model: LLModel) {
         super.integration_testToolChoiceRequired(model)
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.utils.Models#allCompletionModels")
+    @MethodSource("ai.koog.integration.tests.utils.Models#latestModels")
     override fun integration_testToolChoiceNone(model: LLModel) {
         super.integration_testToolChoiceNone(model)
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.utils.Models#allCompletionModels")
+    @MethodSource("ai.koog.integration.tests.utils.Models#latestModels")
     override fun integration_testToolChoiceNamed(model: LLModel) {
         super.integration_testToolChoiceNamed(model)
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.utils.Models#allCompletionModels")
+    @MethodSource("ai.koog.integration.tests.utils.Models#latestModels")
     override fun integration_testBase64EncodedAttachment(model: LLModel) {
         assumeTrue(
             model.provider != LLMProvider.Bedrock,
@@ -185,7 +243,7 @@ class MultipleLLMPromptExecutorIntegrationTest : ExecutorIntegrationTestBase() {
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.utils.Models#allCompletionModels")
+    @MethodSource("ai.koog.integration.tests.utils.Models#latestModels")
     override fun integration_testUrlBasedAttachment(model: LLModel) {
         assumeTrue(
             model.provider != LLMProvider.Bedrock,
@@ -196,31 +254,31 @@ class MultipleLLMPromptExecutorIntegrationTest : ExecutorIntegrationTestBase() {
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.utils.Models#allCompletionModels")
+    @MethodSource("ai.koog.integration.tests.utils.Models#latestModels")
     override fun integration_testStructuredOutputNative(model: LLModel) {
         super.integration_testStructuredOutputNative(model)
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.utils.Models#allCompletionModels")
+    @MethodSource("ai.koog.integration.tests.utils.Models#latestModels")
     override fun integration_testStructuredOutputNativeWithFixingParser(model: LLModel) {
         super.integration_testStructuredOutputNativeWithFixingParser(model)
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.utils.Models#allCompletionModels")
+    @MethodSource("ai.koog.integration.tests.utils.Models#latestModels")
     override fun integration_testStructuredOutputManual(model: LLModel) {
         super.integration_testStructuredOutputManual(model)
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.utils.Models#allCompletionModels")
+    @MethodSource("ai.koog.integration.tests.utils.Models#latestModels")
     override fun integration_testStructuredOutputManualWithFixingParser(model: LLModel) {
         super.integration_testStructuredOutputManualWithFixingParser(model)
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.utils.Models#allCompletionModels")
+    @MethodSource("ai.koog.integration.tests.utils.Models#latestModels")
     override fun integration_testMultipleSystemMessages(model: LLModel) {
         super.integration_testMultipleSystemMessages(model)
     }
@@ -229,6 +287,12 @@ class MultipleLLMPromptExecutorIntegrationTest : ExecutorIntegrationTestBase() {
     @MethodSource("ai.koog.integration.tests.utils.Models#embeddingModels")
     override fun integration_testEmbed(model: LLModel) {
         super.integration_testEmbed(model)
+    }
+
+    @ParameterizedTest
+    @MethodSource("ai.koog.integration.tests.utils.Models#batchEmbeddingModels")
+    override fun integration_testEmbedBatch(model: LLModel) {
+        super.integration_testEmbedBatch(model)
     }
 
     @ParameterizedTest
@@ -256,14 +320,14 @@ class MultipleLLMPromptExecutorIntegrationTest : ExecutorIntegrationTestBase() {
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.utils.Models#openAIReasoningModels")
-    override fun integration_testReasoningStreamingSummaryDeltas(model: LLModel) {
-        super.integration_testReasoningStreamingSummaryDeltas(model)
+    @MethodSource("ai.koog.integration.tests.utils.Models#reasoningCapableModels")
+    override fun integration_testReasoningMultiStep(model: LLModel) {
+        super.integration_testReasoningMultiStep(model)
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.utils.Models#openAIReasoningModels")
-    override fun integration_testReasoningStreamingWithEncryptedContent(model: LLModel) {
-        super.integration_testReasoningStreamingWithEncryptedContent(model)
+    @MethodSource("providersWithModelsRequestSupport")
+    override fun integration_testGetModels(provider: LLMProvider) {
+        super.integration_testGetModels(provider)
     }
 }

@@ -1,6 +1,6 @@
 package ai.koog.integration.tests
 
-import ai.koog.prompt.executor.llms.SingleLLMPromptExecutor
+import ai.koog.prompt.executor.llms.MultiLLMPromptExecutor
 import ai.koog.prompt.executor.ollama.client.OllamaClient
 import ai.koog.prompt.executor.ollama.client.OllamaModels
 import com.github.dockerjava.api.model.Bind
@@ -35,14 +35,15 @@ class OllamaTestFixture {
 
     lateinit var client: OllamaClient
         private set
-    lateinit var executor: SingleLLMPromptExecutor
+    lateinit var executor: MultiLLMPromptExecutor
         private set
 
-    val model = OllamaModels.Meta.LLAMA_3_2
+    val model = OllamaModels.Alibaba.QWEN_3_5_9B
+    val embeddingsModel = OllamaModels.Embeddings.NOMIC_EMBED_TEXT
     val visionModel = OllamaModels.Granite.GRANITE_3_2_VISION
     val moderationModel = OllamaModels.Meta.LLAMA_GUARD_3
     val thinkingModel = OllamaModels.DeepSeek.DEEPSEEK_R1_DISTILL_LLAMA_1_5B
-    val modelsWithHallucinations = listOf(OllamaModels.Meta.LLAMA_3_2, OllamaModels.Groq.LLAMA_3_GROK_TOOL_USE_8B)
+    val modelsWithHallucinations = listOf(model, OllamaModels.Groq.LLAMA_3_GROK_TOOL_USE_8B)
 
     private lateinit var ollamaContainer: GenericContainer<*>
 
@@ -67,6 +68,7 @@ class OllamaTestFixture {
             runBlocking {
                 try {
                     client.getModelOrNull(model.id, pullIfMissing = true)
+                    client.getModelOrNull(embeddingsModel.id, pullIfMissing = true)
                     client.getModelOrNull(visionModel.id, pullIfMissing = true)
                     client.getModelOrNull(moderationModel.id, pullIfMissing = true)
                     client.getModelOrNull(thinkingModel.id, pullIfMissing = true)
@@ -78,7 +80,7 @@ class OllamaTestFixture {
                 }
             }
 
-            executor = SingleLLMPromptExecutor(client)
+            executor = MultiLLMPromptExecutor(client)
         } catch (e: Exception) {
             teardown()
             throw e
@@ -102,7 +104,7 @@ class OllamaTestFixture {
             withExposedPorts(PORT)
             withCreateContainerCmdModifier { cmd ->
                 cmd.hostConfig?.apply {
-                    withMemory(4L * 1024 * 1024 * 1024) // 4GB RAM
+                    withMemory(12L * 1024 * 1024 * 1024) // 12GB RAM for qwen3.5:9b
                     withCpuCount(2L)
                     // Mount the external volume
                     withBinds(

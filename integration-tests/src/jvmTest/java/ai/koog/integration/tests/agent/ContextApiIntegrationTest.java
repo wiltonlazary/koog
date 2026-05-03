@@ -1,6 +1,7 @@
 package ai.koog.integration.tests.agent;
 
 import ai.koog.agents.core.agent.AIAgent;
+import ai.koog.agents.core.agent.config.AIAgentConfig;
 import ai.koog.agents.core.agent.ToolCalls;
 import ai.koog.agents.core.agent.context.AIAgentFunctionalContext;
 import ai.koog.agents.core.tools.Tool;
@@ -13,6 +14,7 @@ import ai.koog.integration.tests.utils.Models;
 import ai.koog.integration.tests.utils.StructuredResults;
 import ai.koog.prompt.llm.LLModel;
 import ai.koog.prompt.message.Message;
+import ai.koog.serialization.kotlinx.KotlinxSerializer;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
@@ -22,11 +24,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class ContextApiIntegrationTest extends KoogJavaTestBase {
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.agent.AIAgentTestBase#getLatestModels")
+    @MethodSource("ai.koog.integration.tests.agent.AIAgentTestBase#latestModels")
     public void integration_RequestLLMStructuredSimple(LLModel model) {
         Models.assumeAvailable(model.getProvider());
 
@@ -51,7 +54,7 @@ public class ContextApiIntegrationTest extends KoogJavaTestBase {
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.agent.AIAgentTestBase#getLatestModels")
+    @MethodSource("ai.koog.integration.tests.agent.AIAgentTestBase#latestModels")
     public void integration_RequestLLMStructuredComplex(LLModel model) {
         Models.assumeAvailable(model.getProvider());
 
@@ -79,7 +82,7 @@ public class ContextApiIntegrationTest extends KoogJavaTestBase {
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.agent.AIAgentTestBase#getLatestModels")
+    @MethodSource("ai.koog.integration.tests.agent.AIAgentTestBase#latestModels")
     public void integration_LLMWriteSession(LLModel model) {
         Models.assumeAvailable(model.getProvider());
 
@@ -117,7 +120,7 @@ public class ContextApiIntegrationTest extends KoogJavaTestBase {
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.agent.AIAgentTestBase#getLatestModels")
+    @MethodSource("ai.koog.integration.tests.agent.AIAgentTestBase#latestModels")
     public void integration_LLMReadSession(LLModel model) {
         Models.assumeAvailable(model.getProvider());
 
@@ -150,7 +153,7 @@ public class ContextApiIntegrationTest extends KoogJavaTestBase {
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.agent.AIAgentTestBase#getLatestModels")
+    @MethodSource("ai.koog.integration.tests.agent.AIAgentTestBase#latestModels")
     public void integration_SubtaskSequential(LLModel model) {
         Models.assumeAvailable(model.getProvider());
 
@@ -158,13 +161,17 @@ public class ContextApiIntegrationTest extends KoogJavaTestBase {
         List<Tool<?, ?>> tools = List.of(calculator.getTool("add"));
 
         AIAgent<String, String> agent = AIAgent.builder()
+            .agentConfig(
+                AIAgentConfig.builder()
+                    .model(model)
+                    .serializer(new KotlinxSerializer())
+                    .build()
+            )
             .promptExecutor(createExecutor(model))
-            .llmModel(model)
             .systemPrompt("You are a coordinator that delegates calculations.")
             .toolRegistry(ToolRegistry.builder().tools(calculator).build())
             .functionalStrategy((AIAgentFunctionalContext context, String input) -> {
                 String subtaskResult = context.subtask("Calculate the sum of 10 and 20 using the add tool")
-                    .withInput(input)
                     .withOutput(String.class)
                     .withTools(tools)
                     .useLLM(model)
@@ -183,7 +190,7 @@ public class ContextApiIntegrationTest extends KoogJavaTestBase {
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.agent.AIAgentTestBase#getLatestModels")
+    @MethodSource("ai.koog.integration.tests.agent.AIAgentTestBase#latestModels")
     public void integration_SubtaskParallel(LLModel model) {
         Models.assumeAvailable(model.getProvider());
 
@@ -191,13 +198,17 @@ public class ContextApiIntegrationTest extends KoogJavaTestBase {
         List<Tool<?, ?>> tools = List.of(calculator.getTool("add"), calculator.getTool("multiply"));
 
         AIAgent<String, String> agent = AIAgent.builder()
+            .agentConfig(
+                AIAgentConfig.builder()
+                    .model(model)
+                    .serializer(new KotlinxSerializer())
+                    .build()
+            )
             .promptExecutor(createExecutor(model))
-            .llmModel(model)
             .systemPrompt("You are a coordinator that delegates calculations.")
             .toolRegistry(ToolRegistry.builder().tools(calculator).build())
             .functionalStrategy((AIAgentFunctionalContext context, String input) -> {
                 String subtaskResult = context.subtask("Calculate 5 + 3 and 4 * 6 using available tools")
-                    .withInput(input)
                     .withOutput(String.class)
                     .withTools(tools)
                     .useLLM(model)
@@ -215,7 +226,7 @@ public class ContextApiIntegrationTest extends KoogJavaTestBase {
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.agent.AIAgentTestBase#getLatestModels")
+    @MethodSource("ai.koog.integration.tests.agent.AIAgentTestBase#latestModels")
     public void integration_SubtaskSingleRunSequential(LLModel model) {
         Models.assumeAvailable(model.getProvider());
 
@@ -223,13 +234,17 @@ public class ContextApiIntegrationTest extends KoogJavaTestBase {
         List<Tool<?, ?>> tools = List.of(calculator.getTool("add"));
 
         AIAgent<String, String> agent = AIAgent.builder()
+            .agentConfig(
+                AIAgentConfig.builder()
+                    .model(model)
+                    .serializer(new KotlinxSerializer())
+                    .build()
+            )
             .promptExecutor(createExecutor(model))
-            .llmModel(model)
             .systemPrompt("You are a coordinator.")
             .toolRegistry(ToolRegistry.builder().tools(calculator).build())
             .functionalStrategy((AIAgentFunctionalContext context, String input) -> {
                 String subtaskResult = context.subtask("Add 7 and 8")
-                    .withInput(input)
                     .withOutput(String.class)
                     .withTools(tools)
                     .useLLM(model)
@@ -248,7 +263,7 @@ public class ContextApiIntegrationTest extends KoogJavaTestBase {
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.agent.AIAgentTestBase#getLatestModels")
+    @MethodSource("ai.koog.integration.tests.agent.AIAgentTestBase#latestModels")
     public void integration_ExecuteMultipleToolsParallel(LLModel model) {
         Models.assumeAvailable(model.getProvider());
 
@@ -288,7 +303,7 @@ public class ContextApiIntegrationTest extends KoogJavaTestBase {
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.agent.AIAgentTestBase#getLatestModels")
+    @MethodSource("ai.koog.integration.tests.agent.AIAgentTestBase#latestModels")
     public void integration_ExecuteSingleTool(LLModel model) {
         Models.assumeAvailable(model.getProvider());
 
@@ -325,7 +340,7 @@ public class ContextApiIntegrationTest extends KoogJavaTestBase {
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.agent.AIAgentTestBase#getLatestModels")
+    @MethodSource("ai.koog.integration.tests.agent.AIAgentTestBase#latestModels")
     public void integration_GetHistory(LLModel model) {
         Models.assumeAvailable(model.getProvider());
 
@@ -337,14 +352,10 @@ public class ContextApiIntegrationTest extends KoogJavaTestBase {
                 context.requestLLM("First question: What is 2+2?", true);
                 context.requestLLM("Second question: What is 3*3?", true);
 
-                try {
-                    var history = context.getHistory();
-                    int historySize = history.size();
+                var history = context.getHistory();
+                int historySize = history.size();
 
-                    return "History contains " + historySize + " messages";
-                } catch (Exception e) {
-                    throw new RuntimeException("Failed to retrieve history", e);
-                }
+                return "History contains " + historySize + " messages";
             })
             .build();
 
@@ -356,7 +367,7 @@ public class ContextApiIntegrationTest extends KoogJavaTestBase {
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.agent.AIAgentTestBase#getLatestModels")
+    @MethodSource("ai.koog.integration.tests.agent.AIAgentTestBase#latestModels")
     public void integration_ShouldExecuteMultipleHandlersInOrder(LLModel model) {
         Models.assumeAvailable(model.getProvider());
 
@@ -400,7 +411,7 @@ public class ContextApiIntegrationTest extends KoogJavaTestBase {
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.agent.AIAgentTestBase#getLatestModels")
+    @MethodSource("ai.koog.integration.tests.agent.AIAgentTestBase#latestModels")
     public void integration_ShouldSupportMultipleHandlers(LLModel model) {
         Models.assumeAvailable(model.getProvider());
 
@@ -431,7 +442,7 @@ public class ContextApiIntegrationTest extends KoogJavaTestBase {
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.agent.AIAgentTestBase#getLatestModels")
+    @MethodSource("ai.koog.integration.tests.agent.AIAgentTestBase#latestModels")
     public void integration_ShouldConfigureMultipleEvents(LLModel model) {
         Models.assumeAvailable(model.getProvider());
 
@@ -458,7 +469,7 @@ public class ContextApiIntegrationTest extends KoogJavaTestBase {
     }
 
     @ParameterizedTest
-    @MethodSource("ai.koog.integration.tests.agent.AIAgentTestBase#getLatestModels")
+    @MethodSource("ai.koog.integration.tests.agent.AIAgentTestBase#latestModels")
     public void integration_ShouldTriggerToolEventsInOrder(LLModel model) {
         Models.assumeAvailable(model.getProvider());
 

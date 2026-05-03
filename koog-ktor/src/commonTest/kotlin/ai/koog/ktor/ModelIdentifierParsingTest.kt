@@ -149,6 +149,18 @@ class ModelIdentifierParsingTest {
         assertEquals(LLMProvider.OpenAI, gpt5_3codex.provider)
         assertEquals(OpenAIModels.Chat.GPT5_3Codex, gpt5_3codex)
 
+        // Test GPT-5.4Mini
+        val gpt5_4mini = getModelFromIdentifier("openai.chat.gpt5_4mini")
+        assertNotNull(gpt5_4mini)
+        assertEquals(LLMProvider.OpenAI, gpt5_4mini.provider)
+        assertEquals(OpenAIModels.Chat.GPT5_4Mini, gpt5_4mini)
+
+        // Test GPT-5.4Nano
+        val gpt5_4nano = getModelFromIdentifier("openai.chat.gpt5_4nano")
+        assertNotNull(gpt5_4nano)
+        assertEquals(LLMProvider.OpenAI, gpt5_4nano.provider)
+        assertEquals(OpenAIModels.Chat.GPT5_4Nano, gpt5_4nano)
+
         // Test GPT-5.4
         val gpt5_4 = getModelFromIdentifier("openai.chat.gpt5_4")
         assertNotNull(gpt5_4)
@@ -216,10 +228,12 @@ class ModelIdentifierParsingTest {
             "anthropic.opus_4_1" to AnthropicModels.Opus_4_1,
             "anthropic.opus_4_5" to AnthropicModels.Opus_4_5,
             "anthropic.opus_4_6" to AnthropicModels.Opus_4_6,
+            "anthropic.opus_4_7" to AnthropicModels.Opus_4_7,
             "anthropic.haiku_3" to AnthropicModels.Haiku_3,
             "anthropic.haiku_4_5" to AnthropicModels.Haiku_4_5,
             "anthropic.sonnet_4" to AnthropicModels.Sonnet_4,
             "anthropic.sonnet_4_5" to AnthropicModels.Sonnet_4_5,
+            "anthropic.sonnet_4_6" to AnthropicModels.Sonnet_4_6,
         )
     )
 
@@ -322,6 +336,18 @@ class ModelIdentifierParsingTest {
     // DeepSeek model identifier tests
     @Test
     fun testDeepSeekModels() = runTest {
+        // Test DeepSeek V4 Flash
+        val deepSeekV4Flash = getModelFromIdentifier("deepseek.deepseek-v4-flash")
+        assertNotNull(deepSeekV4Flash)
+        assertEquals(LLMProvider.DeepSeek, deepSeekV4Flash.provider)
+        assertEquals(DeepSeekModels.DeepSeekV4Flash, deepSeekV4Flash)
+
+        // Test DeepSeek V4 Pro
+        val deepSeekV4Pro = getModelFromIdentifier("deepseek.deepseek-v4-pro")
+        assertNotNull(deepSeekV4Pro)
+        assertEquals(LLMProvider.DeepSeek, deepSeekV4Pro.provider)
+        assertEquals(DeepSeekModels.DeepSeekV4Pro, deepSeekV4Pro)
+
         // Test DeepSeek Chat
         val deepSeekChat = getModelFromIdentifier("deepseek.deepseek-chat")
         assertNotNull(deepSeekChat)

@@ -82,7 +82,7 @@ public object OllamaModels : LLModelDefinitions {
          * This variable defines an instance of the `LLModel` class with the Ollama provider, a unique identifier "llama3.2:3b",
          * and a set of capabilities. The supported capabilities include:
          *  - Temperature adjustment.
-         *  - JSON Schema-based tasks (Simple Schema).
+         *  - JSON Schema-based tasks (Basic Schema).
          *  - Tool utilization.
          *
          * LLAMA 3.2.3b is designed to support these specified features, enabling developers to utilize the model for tasks
@@ -108,7 +108,7 @@ public object OllamaModels : LLModelDefinitions {
          * This variable defines an instance of the `LLModel` class with the Ollama provider, a unique identifier "llama3.2",
          * and a set of capabilities. The supported capabilities include:
          *  - Temperature adjustment.
-         *  - JSON Schema-based tasks (Simple Schema).
+         *  - JSON Schema-based tasks (Basic Schema).
          *  - Tool utilization.
          *
          * LLAMA 3.2 is designed to support these specified features, enabling developers to utilize the model for tasks
@@ -135,7 +135,7 @@ public object OllamaModels : LLModelDefinitions {
          * @see <a href="https://ollama.com/library/llama4">
          */
         @JvmField
-        public val LLAMA_4_SCOUT: LLModel = LLModel(
+        public val LLAMA_4_LATEST: LLModel = LLModel(
             provider = LLMProvider.Ollama,
             id = "llama4:latest",
             capabilities = listOf(
@@ -154,8 +154,26 @@ public object OllamaModels : LLModelDefinitions {
          *
          * @see <a href="https://ollama.com/library/llama4">
          */
-        @JvmField
-        public val LLAMA_4: LLModel = LLAMA_4_SCOUT
+        public val LLAMA_4_SCOUT: LLModel = LLModel(
+            provider = LLMProvider.Ollama,
+            id = "llama4:scout",
+            capabilities = listOf(
+                LLMCapability.Temperature,
+                LLMCapability.Schema.JSON.Basic,
+                LLMCapability.Tools
+            ),
+            contextLength = 10_485_760,
+        )
+
+        /**
+         * Represents the LLAMA version 4 model provided by Meta.
+         *
+         * The LLAMA 4 collection of models is natively multimodal AI models that enable text and multimodal experiences.
+         * These two models leverage a mixture-of-experts (MoE) architecture and support native multimodality (image input).
+         *
+         * @see <a href="https://ollama.com/library/llama4">
+         */
+        public val LLAMA_4: LLModel = LLAMA_4_LATEST
 
         /**
          * Represents the llama-guard model version3 provided by Meta.
@@ -188,7 +206,7 @@ public object OllamaModels : LLModelDefinitions {
          *
          * This predefined instance of `LLModel` is provided by Alibaba and supports the following capabilities:
          * - `Temperature`: Allows adjustment of the temperature setting for controlling the randomness in responses.
-         * - `Schema.JSON.Simple`: Supports tasks requiring JSON schema validation and handling in a simplified manner.
+         * - `Schema.JSON.Basic`: Supports tasks requiring JSON schema validation and handling in a simplified manner.
          * - `Tools`: Enables interaction with external tools or functionalities within the model's ecosystem.
          *
          * The model is identified by the unique ID "qwen2.5:0.5b" and categorized under the Ollama provider.
@@ -212,7 +230,7 @@ public object OllamaModels : LLModelDefinitions {
          *
          * This predefined instance of `LLModel` is provided by Alibaba and supports the following capabilities:
          * - `Temperature`: Allows adjustment of the temperature setting for controlling the randomness in responses.
-         * - `Schema.JSON.Simple`: Supports tasks requiring JSON schema validation and handling in a simplified manner.
+         * - `Schema.JSON.Basic`: Supports tasks requiring JSON schema validation and handling in a simplified manner.
          * - `Tools`: Enables interaction with external tools or functionalities within the model's ecosystem.
          *
          * The model is identified by the unique ID "qwen3:0.6b" and categorized under the Ollama provider.
@@ -226,7 +244,8 @@ public object OllamaModels : LLModelDefinitions {
             capabilities = listOf(
                 LLMCapability.Temperature,
                 LLMCapability.Schema.JSON.Basic,
-                LLMCapability.Tools
+                LLMCapability.Tools,
+                LLMCapability.Thinking,
             ),
             contextLength = 40_960,
         )
@@ -236,7 +255,7 @@ public object OllamaModels : LLModelDefinitions {
          *
          * This predefined instance of `LLModel` is provided by Alibaba and supports the following capabilities:
          * - `Temperature`: Allows adjustment of the temperature setting for controlling the randomness in responses.
-         * - `Schema.JSON.Simple`: Supports tasks requiring JSON schema validation and handling in a simplified manner.
+         * - `Schema.JSON.Basic`: Supports tasks requiring JSON schema validation and handling in a simplified manner.
          * - `Tools`: Enables interaction with external tools or functionalities within the model's ecosystem.
          *
          * The model is identified by the unique ID "qwq:32b" and categorized under the Ollama provider.
@@ -250,7 +269,8 @@ public object OllamaModels : LLModelDefinitions {
             capabilities = listOf(
                 LLMCapability.Temperature,
                 LLMCapability.Schema.JSON.Basic,
-                LLMCapability.Tools
+                LLMCapability.Tools,
+                LLMCapability.Thinking,
             ),
             contextLength = 40_960,
         )
@@ -261,7 +281,7 @@ public object OllamaModels : LLModelDefinitions {
          * The model is identified by its unique `id` "qwq". It belongs to the Ollama provider
          * and supports multiple advanced capabilities:
          * - Temperature Adjustment: Enables control over the randomness of the model's output.
-         * - JSON Schema (Simple): Supports tasks structured through simple JSON schemas.
+         * - JSON Schema (Basic): Supports tasks structured through basic JSON schemas.
          * - Tools Usage: Allows the model to interact with external tools for extended functionality.
          *
          * Use this configuration to interact with the Alibaba `QWQ` model in applications that
@@ -277,7 +297,7 @@ public object OllamaModels : LLModelDefinitions {
          *
          * This predefined instance of `LLModel` is provided by Alibaba and supports the following capabilities:
          * - `Temperature`: Allows adjustment of the temperature setting for controlling the randomness in responses.
-         * - `Schema.JSON.Simple`: Supports tasks requiring JSON schema validation and handling in a simplified manner.
+         * - `Schema.JSON.Basic`: Supports tasks requiring JSON schema validation and handling in a simplified manner.
          * - `Tools`: Enables interaction with external tools or functionalities within the model's ecosystem.
          *
          * The model is identified by the unique ID "qwen2.5-coder:32b" and categorized under the Ollama provider.
@@ -295,6 +315,37 @@ public object OllamaModels : LLModelDefinitions {
             ),
             contextLength = 32_768,
         )
+
+        /**
+         * Represents the Alibaba Qwen 3.5 open-source multimodal model with 9 billion parameters.
+         *
+         * This predefined instance of `LLModel` is provided by Alibaba and supports the following capabilities:
+         * - `Schema.JSON.Basic`: Supports tasks requiring JSON schema validation and handling in a simplified manner.
+         * - `Temperature`: Allows adjustment of the temperature setting for controlling the randomness in responses.
+         * - `Thinking`: Represents the thinking/reasoning capability of a language model.
+         * - `ToolChoice`: Represents how tools calling can be configured for the LLM.
+         * - `Tools`: Enables interaction with external tools or functionalities within the model's ecosystem.
+         * - `Vision.Image`: Enables processing and understanding of image inputs alongside text.
+         *
+         * The model is identified by the unique ID "qwen3.5:9b" and categorized under the Ollama provider.
+         *
+         * <a href="https://ollama.com/library/qwen3.5">
+         */
+        @JvmField
+        public val QWEN_3_5_9B: LLModel = LLModel(
+            provider = LLMProvider.Ollama,
+            id = "qwen3.5:9b",
+            capabilities =
+            listOf(
+                LLMCapability.Schema.JSON.Basic,
+                LLMCapability.Temperature,
+                LLMCapability.Thinking,
+                LLMCapability.ToolChoice,
+                LLMCapability.Tools,
+                LLMCapability.Vision.Image,
+            ),
+            contextLength = 256_000,
+        )
     }
 
     /**
@@ -308,7 +359,7 @@ public object OllamaModels : LLModelDefinitions {
          *
          * This predefined instance of `LLModel` is provided by Granite and supports the following capabilities:
          * - `Temperature`: Allows adjustment of the temperature setting for controlling the randomness in responses.
-         * - `Schema.JSON.Simple`: Supports tasks requiring JSON schema validation and handling in a simplified manner.
+         * - `Schema.JSON.Basic`: Supports tasks requiring JSON schema validation and handling in a simplified manner.
          * - `Tools`: Enables interaction with external tools or functionalities within the model's ecosystem.
          * - `Vision.Image`: Enables processing and understanding of image inputs alongside text.
          *
@@ -359,9 +410,40 @@ public object OllamaModels : LLModelDefinitions {
             capabilities = listOf(
                 LLMCapability.Temperature,
                 LLMCapability.Schema.JSON.Basic,
-                LLMCapability.Tools
+                LLMCapability.Tools,
+                LLMCapability.Thinking,
             ),
             contextLength = 32_768,
+        )
+    }
+
+    /**
+     * The `OpenAI` object represents the configuration for OpenAI large language models (LLMs).
+     * It contains the predefined model specifications for OpenAI LLMs, including their identifiers
+     * and supported capabilities.
+     */
+    public object OpenAI {
+        /**
+         * Represents the OpenAI gpt-oss model with 20 billion parameters.
+         *
+         * It leverages a standard set of capabilities for interaction.
+         *
+         * @see <a href="https://ollama.com/library/gpt-oss">
+         */
+        @JvmField
+        public val GPT_OSS_20B: LLModel = LLModel(
+            provider = LLMProvider.Ollama,
+            id = "gpt-oss:20b",
+            capabilities =
+            listOf(
+                LLMCapability.Completion,
+                LLMCapability.Schema.JSON.Standard,
+                LLMCapability.Speculation,
+                LLMCapability.Temperature,
+                LLMCapability.ToolChoice,
+                LLMCapability.Tools,
+            ),
+            contextLength = 128_000,
         )
     }
 
@@ -469,14 +551,17 @@ public object OllamaModels : LLModelDefinitions {
         Meta.LLAMA_3_2,
         Meta.LLAMA_3_2_3B,
         Meta.LLAMA_4,
+        Meta.LLAMA_4_SCOUT,
         Meta.LLAMA_GUARD_3,
         Alibaba.QWEN_2_5_05B,
         Alibaba.QWEN_3_06B,
         Alibaba.QWQ_32B,
         Alibaba.QWQ,
         Alibaba.QWEN_CODER_2_5_32B,
+        Alibaba.QWEN_3_5_9B,
         Granite.GRANITE_3_2_VISION,
         DeepSeek.DEEPSEEK_R1_DISTILL_LLAMA_1_5B,
+        OpenAI.GPT_OSS_20B,
         Embeddings.NOMIC_EMBED_TEXT,
         Embeddings.ALL_MINI_LM,
         Embeddings.MULTILINGUAL_E5,

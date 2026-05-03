@@ -1,8 +1,9 @@
 package ai.koog.agents.features.opentelemetry.span
 
-import ai.koog.agents.features.opentelemetry.attribute.CommonAttributes
+import ai.koog.agents.features.opentelemetry.attribute.GenAIAttributes
 import ai.koog.agents.features.opentelemetry.attribute.KoogAttributes
-import ai.koog.agents.features.opentelemetry.attribute.SpanAttributes
+import ai.koog.agents.features.opentelemetry.extension.addCommonErrorAttributes
+import ai.koog.agents.features.opentelemetry.extension.systemMessages
 import ai.koog.agents.features.opentelemetry.extension.toSpanEndStatus
 import ai.koog.prompt.llm.LLModel
 import ai.koog.prompt.message.Message
@@ -12,7 +13,7 @@ import io.opentelemetry.api.trace.Tracer
 /**
  * Build and start a new Create Agent Span with necessary attributes.
  *
- * Add the necessary attributes for the Create Agent Span according to the Open Telemetry Semantic Convention:
+ * Add the necessary attributes for the Create Agent Span according to the OpenTelemetry Semantic Convention:
  * https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-agent-spans/#create-agent-span
  *
  * Span attributes:
@@ -42,25 +43,25 @@ internal fun startCreateAgentSpan(
         parentSpan = parentSpan,
         id = id,
         kind = SpanKind.CLIENT,
-        name = "${SpanAttributes.Operation.OperationNameType.CREATE_AGENT.id} $agentId",
+        name = "${GenAIAttributes.Operation.OperationNameType.CREATE_AGENT.id} $agentId",
     )
         // gen_ai.operation.name
-        .addAttribute(SpanAttributes.Operation.Name(SpanAttributes.Operation.OperationNameType.CREATE_AGENT))
+        .addAttribute(GenAIAttributes.Operation.Name(GenAIAttributes.Operation.OperationNameType.CREATE_AGENT))
         // gen_ai.provider.name
-        .addAttribute(SpanAttributes.Provider.Name(model.provider))
+        .addAttribute(GenAIAttributes.Provider.Name(model.provider))
         // gen_ai.request.model
-        .addAttribute(SpanAttributes.Request.Model(model))
+        .addAttribute(GenAIAttributes.Request.Model(model))
         // gen_ai.agent.description - Ignore. Not supported in Koog
         // gen_ai.agent.id
-        .addAttribute(SpanAttributes.Agent.Id(agentId))
+        .addAttribute(GenAIAttributes.Agent.Id(agentId))
 
     // gen_ai.agent.name - Ignore. Not supported in Koog
     // server.port - Ignore. Not supported in Koog
     // server.address - Ignore. Not supported in Koog
     // gen_ai.system_instructions
-    val systemMessages = messages.filterIsInstance<Message.System>()
+    val systemMessages = messages.systemMessages()
     if (systemMessages.isNotEmpty()) {
-        builder.addAttribute(SpanAttributes.SystemInstructions(systemMessages))
+        builder.addAttribute(GenAIAttributes.SystemInstructions(systemMessages))
     }
 
     builder.addAttribute(KoogAttributes.Koog.Event.Id(id))
@@ -71,7 +72,7 @@ internal fun startCreateAgentSpan(
 /**
  * End Create Agent Span and set final attributes.
  *
- * Add the necessary attributes for the Create Agent Span according to the Open Telemetry Semantic Convention:
+ * Add the necessary attributes for the Create Agent Span according to the OpenTelemetry Semantic Convention:
  * https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-agent-spans/#create-agent-span
  *
  * Span attribute:
@@ -87,9 +88,6 @@ internal fun endCreateAgentSpan(
     }
 
     // error.type
-    error?.javaClass?.typeName?.let { typeName ->
-        span.addAttribute(CommonAttributes.Error.Type(typeName))
-    }
-
+    span.addCommonErrorAttributes(error)
     span.end(error.toSpanEndStatus(), verbose)
 }

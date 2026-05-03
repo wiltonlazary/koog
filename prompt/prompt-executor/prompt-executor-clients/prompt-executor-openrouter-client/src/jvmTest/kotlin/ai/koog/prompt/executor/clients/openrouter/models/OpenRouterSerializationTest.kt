@@ -98,11 +98,9 @@ class OpenRouterSerializationTest {
                 ],
                 "model": "anthropic/claude-3-sonnet",
                 "temperature": 0.7,
-                "additional_properties": {
-                    "customProperty": "customValue",
-                    "customNumber": 42,
-                    "customBoolean": true
-                }
+                "customProperty": "customValue",
+                "customNumber": 42,
+                "customBoolean": true
             }
             """.trimIndent()
     }
@@ -158,15 +156,11 @@ class OpenRouterSerializationTest {
         // Verify basic deserialization works
         request.model shouldBe "anthropic/claude-3-sonnet"
         request.temperature shouldBe 0.7
-
-        // Note: Additional properties functionality is currently broken with JsonNamingStrategy.SnakeCase
-        // due to AdditionalPropertiesFlatteningSerializer bug:
-        // KG-531 OpenRouter's AdditionalPropertiesFlatteningSerializer is incompatible with JsonNamingStrategy.SnakeCase
-        // In lenient mode, unknown properties
-        // are ignored instead of collected.
-        //
-        // The test passes because ignoreUnknownKeys = true, but additional properties are not captured
-        request.additionalProperties shouldBe null
+        request.additionalProperties shouldBe mapOf(
+            "extra" to JsonPrimitive("value"),
+            "number" to JsonPrimitive(42),
+            "flag" to JsonPrimitive(true)
+        )
     }
 
     @Test
@@ -398,6 +392,7 @@ class OpenRouterSerializationTest {
                             "content": null,
                             "tool_calls": [
                                 {
+                                    "index": 0,
                                     "id": "call_xyz789",
                                     "type": "function",
                                     "function": {
@@ -428,10 +423,11 @@ class OpenRouterSerializationTest {
         choice.delta.toolCalls?.size shouldBe 1
 
         val toolCall = choice.delta.toolCalls?.get(0)!!
+        val function = requireNotNull(toolCall.function)
         toolCall.id shouldBe "call_xyz789"
         toolCall.type shouldBe "function"
-        toolCall.function.name shouldBe "calculate_total"
-        toolCall.function.arguments shouldBe "{\"items\": ["
+        function.name shouldBe "calculate_total"
+        function.arguments shouldBe "{\"items\": ["
     }
 
     @Test
@@ -645,9 +641,7 @@ class OpenRouterSerializationTest {
                     }
                 },
                 "user": "user-123",
-                "additional_properties": {
-                    "x-extra": "ok"
-                }
+                "x-extra": "ok"
             }
             """.trimIndent()
     }

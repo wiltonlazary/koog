@@ -8,7 +8,6 @@ import ai.koog.prompt.dsl.Prompt
 import ai.koog.prompt.executor.clients.ConnectionTimeoutConfig
 import ai.koog.prompt.executor.clients.LLMClient
 import ai.koog.prompt.executor.clients.LLMClientException
-import ai.koog.prompt.executor.clients.LLMEmbeddingProvider
 import ai.koog.prompt.executor.clients.bedrock.converse.BedrockConverseConverters
 import ai.koog.prompt.executor.clients.bedrock.modelfamilies.BedrockAnthropicInvokeModel
 import ai.koog.prompt.executor.clients.bedrock.modelfamilies.amazon.BedrockAmazonNovaSerialization
@@ -139,7 +138,7 @@ public class BedrockLLMClient @JvmOverloads constructor(
     private val moderationGuardrailsSettings: BedrockGuardrailsSettings? = null,
     private val fallbackModelFamily: BedrockModelFamilies? = null,
     private val clock: Clock = Clock.System,
-) : LLMClient(), LLMEmbeddingProvider {
+) : LLMClient() {
 
     private val logger = KotlinLogging.logger {}
 
@@ -216,7 +215,13 @@ public class BedrockLLMClient @JvmOverloads constructor(
 
             model.id.contains("cohere.embed") -> BedrockModelFamilies.Cohere
 
-            model.id.contains("moonshot.kimi") -> BedrockModelFamilies.MoonshotKimi
+            model.id.contains("moonshot.kimi") || model.id.contains("moonshotai.kimi") -> BedrockModelFamilies.MoonshotKimi
+
+            model.id.contains("google.gemma") -> BedrockModelFamilies.GoogleGemma
+
+            model.id.contains("minimax.") -> BedrockModelFamilies.MiniMax
+
+            model.id.contains("openai.gpt") -> BedrockModelFamilies.OpenAI
 
             else -> {
                 if (fallbackModelFamily != null) {
@@ -294,7 +299,10 @@ public class BedrockLLMClient @JvmOverloads constructor(
                         clock
                     )
 
-                    is BedrockModelFamilies.MoonshotKimi -> throw LLMClientException(
+                    is BedrockModelFamilies.MoonshotKimi,
+                    is BedrockModelFamilies.GoogleGemma,
+                    is BedrockModelFamilies.MiniMax,
+                    is BedrockModelFamilies.OpenAI -> throw LLMClientException(
                         clientName,
                         "Model family ${modelFamily.display} requires the Bedrock Converse API. " +
                             "Please configure BedrockClientSettings with apiMethod = BedrockAPIMethod.Converse"
@@ -325,7 +333,7 @@ public class BedrockLLMClient @JvmOverloads constructor(
         model: LLModel,
         tools: List<ToolDescriptor>
     ): List<Message.Response> {
-        val converseRequest = BedrockConverseConverters.createConverseRequest(prompt, model, tools)
+        val converseRequest = BedrockConverseConverters.createConverseRequest(prompt, model, tools, moderationGuardrailsSettings)
 
         return withContext(Dispatchers.SuitableForIO) {
             try {
@@ -433,7 +441,10 @@ public class BedrockLLMClient @JvmOverloads constructor(
                     clock = clock,
                 )
 
-                is BedrockModelFamilies.MoonshotKimi -> throw LLMClientException(
+                is BedrockModelFamilies.MoonshotKimi,
+                is BedrockModelFamilies.GoogleGemma,
+                is BedrockModelFamilies.MiniMax,
+                is BedrockModelFamilies.OpenAI -> throw LLMClientException(
                     clientName,
                     "Model family ${modelFamily.display} requires the Bedrock Converse API. " +
                         "Please configure BedrockClientSettings with apiMethod = BedrockAPIMethod.Converse"
@@ -475,7 +486,7 @@ public class BedrockLLMClient @JvmOverloads constructor(
         model: LLModel,
         tools: List<ToolDescriptor>
     ): Flow<StreamFrame> {
-        val converseRequest = BedrockConverseConverters.createConverseStreamRequest(prompt, model, tools)
+        val converseRequest = BedrockConverseConverters.createConverseStreamRequest(prompt, model, tools, moderationGuardrailsSettings)
 
         return channelFlow {
             withContext(Dispatchers.SuitableForIO) {
@@ -498,6 +509,17 @@ public class BedrockLLMClient @JvmOverloads constructor(
         }.let { BedrockConverseConverters.transformConverseStreamChunks(it, clock) }
     }
 
+    /**
+     * Embeds the given text using the AWS Bedrock InvokeModel API.
+     *
+     * Supports Amazon Titan Embed (v1 and v2) and Cohere embedding model families.
+     *
+     * @param text The text to embed.
+     * @param model The model to use for embedding. Must have the [LLMCapability.Embed] capability.
+     * @return A list of floating-point values representing the embedding vector.
+     * @throws IllegalArgumentException if the model does not have the Embed capability.
+     * @throws LLMClientException if the model family does not support embeddings.
+     */
     override suspend fun embed(text: String, model: LLModel): List<Double> {
         model.requireCapability(LLMCapability.Embed)
 
@@ -549,6 +571,19 @@ public class BedrockLLMClient @JvmOverloads constructor(
         }
     }
 
+    /**
+     * Batch embedding is not currently supported by the Bedrock client.
+     *
+     * @throws UnsupportedOperationException Always thrown.
+     */
+    override suspend fun embed(
+        inputs: List<String>,
+        model: LLModel
+    ): List<List<Double>> {
+        logger.warn { "Currently batch embedding is not supported." }
+        throw UnsupportedOperationException("Currently batch embedding is not supported.")
+    }
+
     private fun createRequestBody(prompt: Prompt, model: LLModel, tools: List<ToolDescriptor>): String {
         model.requireCapability(
             LLMCapability.Completion,
@@ -572,7 +607,10 @@ public class BedrockLLMClient @JvmOverloads constructor(
                 BedrockMetaLlamaSerialization.createLlamaRequest(prompt, model)
             )
 
-            is BedrockModelFamilies.MoonshotKimi -> throw LLMClientException(
+            is BedrockModelFamilies.MoonshotKimi,
+            is BedrockModelFamilies.GoogleGemma,
+            is BedrockModelFamilies.MiniMax,
+            is BedrockModelFamilies.OpenAI -> throw LLMClientException(
                 clientName,
                 "Model family ${getBedrockModelFamily(model).display} requires the Bedrock Converse API. " +
                     "Please configure BedrockClientSettings with apiMethod = BedrockAPIMethod.Converse"

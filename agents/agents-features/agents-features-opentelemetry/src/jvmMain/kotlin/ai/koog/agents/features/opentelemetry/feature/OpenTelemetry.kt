@@ -8,21 +8,32 @@ import ai.koog.agents.core.feature.AIAgentFunctionalFeature
 import ai.koog.agents.core.feature.AIAgentGraphFeature
 import ai.koog.agents.core.feature.AIAgentPlannerFeature
 import ai.koog.agents.core.feature.handler.tool.ToolCallEventContext
-import ai.koog.agents.core.feature.model.AIAgentError
 import ai.koog.agents.core.feature.pipeline.AIAgentFunctionalPipeline
 import ai.koog.agents.core.feature.pipeline.AIAgentGraphPipeline
 import ai.koog.agents.core.feature.pipeline.AIAgentPipeline
 import ai.koog.agents.core.feature.pipeline.AIAgentPlannerPipeline
 import ai.koog.agents.core.tools.ToolRegistry
-import ai.koog.agents.features.opentelemetry.attribute.SpanAttributes
+import ai.koog.agents.features.opentelemetry.attribute.GenAIAttributes
+import ai.koog.agents.features.opentelemetry.attribute.KoogAttributes
 import ai.koog.agents.features.opentelemetry.event.AssistantMessageEvent
 import ai.koog.agents.features.opentelemetry.event.ChoiceEvent
 import ai.koog.agents.features.opentelemetry.event.ModerationResponseEvent
 import ai.koog.agents.features.opentelemetry.event.SystemMessageEvent
 import ai.koog.agents.features.opentelemetry.event.ToolMessageEvent
 import ai.koog.agents.features.opentelemetry.event.UserMessageEvent
+import ai.koog.agents.features.opentelemetry.extension.lastResponse
+import ai.koog.agents.features.opentelemetry.extension.toFinishReason
 import ai.koog.agents.features.opentelemetry.integration.SpanAdapter
 import ai.koog.agents.features.opentelemetry.integration.mcp.McpMethod
+import ai.koog.agents.features.opentelemetry.metric.MetricCollector
+import ai.koog.agents.features.opentelemetry.metric.duration
+import ai.koog.agents.features.opentelemetry.metric.events.createExecuteToolDurationHistogramMetricEvent
+import ai.koog.agents.features.opentelemetry.metric.events.createLLMCallDurationHistogramMetricEvent
+import ai.koog.agents.features.opentelemetry.metric.events.createLLMInputTokensMetricEvent
+import ai.koog.agents.features.opentelemetry.metric.events.createLLMOutputTokensMetricEvent
+import ai.koog.agents.features.opentelemetry.metric.events.createToolCallCounterMetricEvent
+import ai.koog.agents.features.opentelemetry.metric.events.toLLMCallStartMetricEvent
+import ai.koog.agents.features.opentelemetry.metric.events.toTimestampedMetricEvent
 import ai.koog.agents.features.opentelemetry.span.GenAIAgentSpan
 import ai.koog.agents.features.opentelemetry.span.SpanCollector
 import ai.koog.agents.features.opentelemetry.span.SpanType
@@ -158,7 +169,7 @@ public class OpenTelemetry {
                 endNodeExecuteSpan(
                     span = nodeExecuteSpan,
                     nodeOutput = null,
-                    error = eventContext.throwable,
+                    error = eventContext.error,
                     verbose = config.isVerbose
                 )
                 spanCollector.removeSpan(
@@ -237,7 +248,7 @@ public class OpenTelemetry {
                 endSubgraphExecuteSpan(
                     span = subgraphExecuteSpan,
                     subgraphOutput = null,
-                    error = eventContext.throwable,
+                    error = eventContext.error,
                     verbose = config.isVerbose
                 )
                 spanCollector.removeSpan(
@@ -284,6 +295,9 @@ public class OpenTelemetry {
         ) {
             val spanAdapter = config.spanAdapter
             val tracer = config.tracer
+            val meter = config.meter
+
+            val metricCollector = MetricCollector(meter, config)
 
             //region Agent
 
@@ -342,6 +356,12 @@ public class OpenTelemetry {
                     spanType = SpanType.INVOKE_AGENT
                 ) ?: return@intercept
 
+                eventContext.context.llm.prompt.messages.lastResponse()?.let { response ->
+                    invokeAgentSpan.addAttribute(
+                        GenAIAttributes.Response.FinishReasons(reasons = listOf(response.toFinishReason()))
+                    )
+                }
+
                 spanAdapter?.onBeforeSpanFinished(invokeAgentSpan)
                 endInvokeAgentSpan(
                     span = invokeAgentSpan,
@@ -358,6 +378,10 @@ public class OpenTelemetry {
             pipeline.interceptAgentExecutionFailed(this) intercept@{ eventContext ->
                 logger.debug { "Execute OpenTelemetry agent run error handler" }
 
+                // Record any pending operation-duration metric events (e.g., an LLM call that
+                // started but never completed) as failed measurements per GenAI semconv.
+                metricCollector.flushPendingAsErrors(eventContext.error)
+
                 // Stop all unfinished spans, except InvokeAgentSpan and AgentCreateSpan
                 endUnfinishedSpans(spanCollector, config.isVerbose) { span ->
                     span.type != SpanType.CREATE_AGENT &&
@@ -373,18 +397,12 @@ public class OpenTelemetry {
                     spanType = SpanType.INVOKE_AGENT
                 ) ?: return@intercept
 
-                invokeAgentSpan.addAttribute(
-                    attribute = SpanAttributes.Response.FinishReasons(
-                        listOf(SpanAttributes.Response.FinishReasonType.Error)
-                    )
-                )
-
                 spanAdapter?.onBeforeSpanFinished(invokeAgentSpan)
                 endInvokeAgentSpan(
                     span = invokeAgentSpan,
                     messages = eventContext.context.config.prompt.messages.toList(),
                     model = eventContext.context.config.model,
-                    error = eventContext.throwable,
+                    error = eventContext.error,
                     verbose = config.isVerbose
                 )
                 spanCollector.removeSpan(
@@ -395,6 +413,10 @@ public class OpenTelemetry {
 
             pipeline.interceptAgentClosing(this) intercept@{ eventContext ->
                 logger.debug { "Execute OpenTelemetry before agent closed handler" }
+
+                // Flush any still-pending operation-duration start events as failures so we
+                // don't leak them and so their durations are still reported per semconv.
+                metricCollector.flushPendingAsErrors(error = null)
 
                 // Stop all unfinished spans, except the AgentCreateSpan
                 endUnfinishedSpans(spanCollector, config.isVerbose) { span ->
@@ -423,6 +445,10 @@ public class OpenTelemetry {
                 if (spanCollector.activeSpansCount > 0) {
                     logger.warn { "Found <${spanCollector.activeSpansCount}> active span(s) after agent closing. Stopping them." }
                     endUnfinishedSpans(spanCollector, config.isVerbose)
+                }
+
+                if (config.isShutdownOnAgentClose) {
+                    config.sdk.close()
                 }
             }
 
@@ -537,6 +563,9 @@ public class OpenTelemetry {
                     span = inferenceSpan,
                     path = patchedExecutionInfo
                 )
+
+                // Metrics
+                metricCollector.storeMetricEvent(eventContext.toLLMCallStartMetricEvent())
             }
 
             pipeline.interceptLLMCallCompleted(this) intercept@{ eventContext ->
@@ -584,18 +613,10 @@ public class OpenTelemetry {
                 inferenceSpan.addEvents(eventsToAdd)
 
                 // Finish Reasons Attribute
-                eventContext.responses.lastOrNull()?.let { message ->
-                    val finishReasonsAttribute = when (message) {
-                        is Message.Assistant, is Message.Reasoning -> {
-                            SpanAttributes.Response.FinishReasons(reasons = listOf(SpanAttributes.Response.FinishReasonType.Stop))
-                        }
-
-                        is Message.Tool.Call -> {
-                            SpanAttributes.Response.FinishReasons(reasons = listOf(SpanAttributes.Response.FinishReasonType.ToolCalls))
-                        }
-                    }
-
-                    inferenceSpan.addAttribute(finishReasonsAttribute)
+                eventContext.responses.lastOrNull()?.let { response ->
+                    inferenceSpan.addAttribute(
+                        GenAIAttributes.Response.FinishReasons(reasons = listOf(response.toFinishReason()))
+                    )
                 }
 
                 // Stop InferenceSpan
@@ -605,6 +626,65 @@ public class OpenTelemetry {
                     messages = eventContext.responses,
                     model = eventContext.model,
                     verbose = config.isVerbose
+                )
+                spanCollector.removeSpan(
+                    span = inferenceSpan,
+                    path = patchedExecutionInfo
+                )
+
+                eventContext.responses.lastOrNull()?.metaInfo?.inputTokensCount?.toLong()?.let { inputTokens ->
+                    metricCollector.recordHistogramMetricEvent(
+                        metricEvent = createLLMInputTokensMetricEvent(
+                            id = eventContext.eventId,
+                            model = eventContext.model,
+                            inputTokens = inputTokens,
+                        )
+                    )
+                }
+
+                eventContext.responses.lastOrNull()?.metaInfo?.outputTokensCount?.toLong()?.let { outputTokens ->
+                    metricCollector.recordHistogramMetricEvent(
+                        metricEvent = createLLMOutputTokensMetricEvent(
+                            id = eventContext.eventId,
+                            model = eventContext.model,
+                            outputTokens = outputTokens,
+                        )
+                    )
+                }
+
+                // Metrics
+                metricCollector.getMetricEvent(eventContext.eventId)?.let { storedMetricEvent ->
+                    metricCollector.recordHistogramMetricEvent(
+                        metricEvent = createLLMCallDurationHistogramMetricEvent(
+                            id = eventContext.eventId,
+                            model = eventContext.model,
+                            duration = storedMetricEvent.duration()
+                        )
+                    )
+                }
+            }
+
+            pipeline.interceptLLMCallFailed(this) intercept@{ eventContext ->
+                logger.debug { "Execute OpenTelemetry LLM call failure handler" }
+
+                // Find the current span (Inference Span)
+                val patchedExecutionInfo = eventContext.executionInfo
+                    .appendRunId(eventContext.runId)
+                    .appendId(eventContext.eventId)
+
+                val inferenceSpan = spanCollector.getStartedSpan(
+                    executionInfo = patchedExecutionInfo,
+                    eventId = eventContext.eventId,
+                    spanType = SpanType.INFERENCE
+                ) ?: return@intercept
+
+                spanAdapter?.onBeforeSpanFinished(inferenceSpan)
+                endInferenceSpan(
+                    span = inferenceSpan,
+                    messages = emptyList(),
+                    model = eventContext.model,
+                    verbose = config.isVerbose,
+                    error = eventContext.error
                 )
                 spanCollector.removeSpan(
                     span = inferenceSpan,
@@ -659,6 +739,9 @@ public class OpenTelemetry {
 
                 spanAdapter?.onBeforeSpanStarted(executeToolSpan)
                 spanCollector.collectSpan(executeToolSpan, path)
+
+                // Metrics
+                metricCollector.storeMetricEvent(eventContext.toTimestampedMetricEvent())
             }
 
             pipeline.interceptToolCallCompleted(this) intercept@{ eventContext ->
@@ -671,6 +754,26 @@ public class OpenTelemetry {
                     spanCollector = spanCollector,
                     eventContext = eventContext,
                 )
+
+                // Metrics
+                metricCollector.addCounterMetricEvent(
+                    metricEvent = createToolCallCounterMetricEvent(
+                        id = eventContext.eventId,
+                        toolName = eventContext.toolName,
+                        toolCallStatus = KoogAttributes.Koog.Tool.Call.StatusType.SUCCESS
+                    )
+                )
+
+                metricCollector.getMetricEvent(eventContext.eventId)?.let { storedMetricEvent ->
+                    metricCollector.recordHistogramMetricEvent(
+                        metricEvent = createExecuteToolDurationHistogramMetricEvent(
+                            id = eventContext.eventId,
+                            duration = storedMetricEvent.duration(),
+                            toolName = eventContext.toolName,
+                            toolCallStatus = KoogAttributes.Koog.Tool.Call.StatusType.SUCCESS
+                        )
+                    )
+                }
             }
 
             pipeline.interceptToolCallFailed(this) intercept@{ eventContext ->
@@ -683,6 +786,27 @@ public class OpenTelemetry {
                     eventContext = eventContext,
                     error = eventContext.error,
                 )
+
+                // Metrics
+                metricCollector.addCounterMetricEvent(
+                    metricEvent = createToolCallCounterMetricEvent(
+                        id = eventContext.eventId,
+                        toolName = eventContext.toolName,
+                        toolCallStatus = KoogAttributes.Koog.Tool.Call.StatusType.ERROR
+                    )
+                )
+
+                metricCollector.getMetricEvent(eventContext.eventId)?.let { storedMetricEvent ->
+                    metricCollector.recordHistogramMetricEvent(
+                        metricEvent = createExecuteToolDurationHistogramMetricEvent(
+                            id = eventContext.eventId,
+                            duration = storedMetricEvent.duration(),
+                            toolName = eventContext.toolName,
+                            toolCallStatus = KoogAttributes.Koog.Tool.Call.StatusType.ERROR,
+                            error = eventContext.error,
+                        )
+                    )
+                }
             }
 
             pipeline.interceptToolValidationFailed(this) intercept@{ eventContext ->
@@ -695,6 +819,27 @@ public class OpenTelemetry {
                     eventContext = eventContext,
                     error = eventContext.error,
                 )
+
+                // Metrics
+                metricCollector.addCounterMetricEvent(
+                    metricEvent = createToolCallCounterMetricEvent(
+                        id = eventContext.eventId,
+                        toolName = eventContext.toolName,
+                        toolCallStatus = KoogAttributes.Koog.Tool.Call.StatusType.VALIDATION_FAILED
+                    )
+                )
+
+                metricCollector.getMetricEvent(eventContext.eventId)?.let { storedMetricEvent ->
+                    metricCollector.recordHistogramMetricEvent(
+                        metricEvent = createExecuteToolDurationHistogramMetricEvent(
+                            id = eventContext.eventId,
+                            duration = storedMetricEvent.duration(),
+                            toolName = eventContext.toolName,
+                            toolCallStatus = KoogAttributes.Koog.Tool.Call.StatusType.VALIDATION_FAILED,
+                            error = eventContext.error,
+                        )
+                    )
+                }
             }
 
             //endregion Tool Call
@@ -812,7 +957,7 @@ public class OpenTelemetry {
             spanAdapter: SpanAdapter?,
             spanCollector: SpanCollector,
             eventContext: ToolCallEventContext,
-            error: AIAgentError? = null,
+            error: Throwable? = null,
         ) {
             val path = eventContext.executionInfo.appendRunId(eventContext.runId).appendId(eventContext.eventId)
             val span = spanCollector.getStartedSpan(

@@ -1,7 +1,6 @@
 package ai.koog.agents.core.system.feature
 
 import ai.koog.agents.core.annotation.ExperimentalAgentsApi
-import ai.koog.agents.core.dsl.builder.forwardTo
 import ai.koog.agents.core.dsl.builder.strategy
 import ai.koog.agents.core.dsl.extension.nodeLLMRequestStreamingAndSendResults
 import ai.koog.agents.core.feature.AIAgentFeatureTestAPI.testClock
@@ -21,10 +20,10 @@ import ai.koog.agents.core.system.feature.DebuggerTestAPI.mockLLModel
 import ai.koog.agents.core.system.feature.DebuggerTestAPI.testBaseClient
 import ai.koog.agents.core.system.mock.ClientEventsCollector
 import ai.koog.agents.core.system.mock.MockLLMProvider
-import ai.koog.agents.core.system.mock.assistantMessage
-import ai.koog.agents.core.system.mock.createAgent
-import ai.koog.agents.core.system.mock.systemMessage
-import ai.koog.agents.core.system.mock.userMessage
+import ai.koog.agents.core.system.mock.TestAgentFactory.assistantMessage
+import ai.koog.agents.core.system.mock.TestAgentFactory.createGraphAgent
+import ai.koog.agents.core.system.mock.TestAgentFactory.systemMessage
+import ai.koog.agents.core.system.mock.TestAgentFactory.userMessage
 import ai.koog.agents.core.tools.ToolDescriptor
 import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.agents.testing.agent.agentExecutionInfo
@@ -38,6 +37,7 @@ import ai.koog.prompt.executor.model.PromptExecutor
 import ai.koog.prompt.llm.LLModel
 import ai.koog.prompt.llm.toModelInfo
 import ai.koog.prompt.message.Message
+import ai.koog.prompt.message.ResponseMetaInfo
 import ai.koog.prompt.streaming.StreamFrame
 import ai.koog.serialization.kotlinx.KotlinxSerializer
 import ai.koog.utils.io.use
@@ -121,7 +121,7 @@ class DebuggerStreamingTest {
                 )
             }
 
-            createAgent(
+            createGraphAgent(
                 agentId = agentId,
                 strategy = strategy,
                 promptId = promptId,
@@ -198,7 +198,25 @@ class DebuggerStreamingTest {
                             runId = clientEventsCollector.runId,
                             prompt = expectedLLMCallPrompt,
                             model = mockLLModel.toModelInfo(),
-                            frame = StreamFrame.TextDelta(testLLMResponse),
+                            frame = StreamFrame.TextDelta(testLLMResponse, index = 0),
+                            timestamp = testClock.now().toEpochMilliseconds(),
+                        ),
+                        LLMStreamingFrameReceivedEvent(
+                            eventId = actualStreamingStartingEvent.eventId,
+                            executionInfo = agentExecutionInfo(agentId, strategyName, nodeLLMRequestStreamingName),
+                            runId = clientEventsCollector.runId,
+                            prompt = expectedLLMCallPrompt,
+                            model = mockLLModel.toModelInfo(),
+                            frame = StreamFrame.TextComplete(testLLMResponse, index = 0),
+                            timestamp = testClock.now().toEpochMilliseconds(),
+                        ),
+                        LLMStreamingFrameReceivedEvent(
+                            eventId = actualStreamingStartingEvent.eventId,
+                            executionInfo = agentExecutionInfo(agentId, strategyName, nodeLLMRequestStreamingName),
+                            runId = clientEventsCollector.runId,
+                            prompt = expectedLLMCallPrompt,
+                            model = mockLLModel.toModelInfo(),
+                            frame = StreamFrame.End(null, ResponseMetaInfo.Empty),
                             timestamp = testClock.now().toEpochMilliseconds(),
                         ),
                         LLMStreamingCompletedEvent(
@@ -267,8 +285,10 @@ class DebuggerStreamingTest {
         )
 
         // Executor
-        val testStreamingErrorMessage = "Test streaming error"
-        var testStreamingStackTrace = ""
+        val expectedErrorMessage = "Test streaming error"
+        var expectedStackTrace = ""
+        var expectedCause: String? = null
+        var expectedType: String? = null
 
         val testStreamingExecutor = object : PromptExecutor() {
             override suspend fun execute(
@@ -282,8 +302,10 @@ class DebuggerStreamingTest {
                 model: LLModel,
                 tools: List<ToolDescriptor>
             ): Flow<StreamFrame> = flow {
-                val testException = IllegalStateException(testStreamingErrorMessage)
-                testStreamingStackTrace = testException.stackTraceToString()
+                val testException = IllegalStateException(expectedErrorMessage)
+                expectedStackTrace = testException.stackTraceToString()
+                expectedCause = testException.cause?.toString()
+                expectedType = testException::class.qualifiedName
                 throw testException
             }
 
@@ -317,7 +339,7 @@ class DebuggerStreamingTest {
                 )
             }
 
-            val throwable = createAgent(
+            val throwable = createGraphAgent(
                 agentId = agentId,
                 strategy = strategy,
                 promptId = promptId,
@@ -347,7 +369,7 @@ class DebuggerStreamingTest {
                 }
             }
 
-            assertEquals(testStreamingErrorMessage, throwable.message)
+            assertEquals(expectedErrorMessage, throwable.message)
         }
 
         // Client
@@ -398,7 +420,12 @@ class DebuggerStreamingTest {
                             runId = clientEventsCollector.runId,
                             prompt = expectedLLMCallPrompt,
                             model = testModel.toModelInfo(),
-                            error = AIAgentError(testStreamingErrorMessage, testStreamingStackTrace),
+                            error = AIAgentError(
+                                message = expectedErrorMessage,
+                                stackTrace = expectedStackTrace,
+                                cause = expectedCause,
+                                type = expectedType,
+                            ),
                             timestamp = testClock.now().toEpochMilliseconds()
                         ),
                         LLMStreamingCompletedEvent(
